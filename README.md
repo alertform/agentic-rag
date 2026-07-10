@@ -5,4 +5,5 @@ LangChain + LangGraph 的本地 agentic RAG 练手项目。全链路离线:Ollam
 **当前状态:设计已定稿,尚未实现。**
 
 - 设计文档:[docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md](docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md)
+- 实现计划:[docs/superpowers/plans/2026-07-11-agentic-rag-demo.md](docs/superpowers/plans/2026-07-11-agentic-rag-demo.md)(自包含,零上下文可执行)
 - 实现机器前置条件:安装 Ollama,`ollama pull qwen3:8b && ollama pull bge-m3`
