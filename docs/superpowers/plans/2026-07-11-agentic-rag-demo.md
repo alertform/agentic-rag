@@ -213,8 +213,10 @@ def test_long_section_resplit_with_overlap():
     chunks = split_markdown(f"# 长文\n\n{body}", "long.md")
     assert len(chunks) >= 2, "超长小节应被二次切分"
     assert all(len(c.page_content) <= 800 for c in chunks)
-    # 相邻块之间应有重叠:前块的尾部内容出现在后块里
-    assert chunks[0].page_content[-60:] in chunks[1].page_content
+    # 相邻正文块之间应有重叠(标题行会被切成独立小块,不参与重叠,故只看正文块)
+    body_chunks = [c for c in chunks if "句话内容" in c.page_content]
+    assert len(body_chunks) >= 2
+    assert body_chunks[0].page_content[-60:] in body_chunks[1].page_content
     assert all(c.metadata["headers"] == "长文" for c in chunks)
 ```
 
