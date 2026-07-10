@@ -1,4 +1,4 @@
-from agentic_rag.ingest import split_markdown
+from agentic_rag.ingest import load_documents, split_markdown
 
 
 def test_split_keeps_source_and_header_path():
@@ -20,3 +20,12 @@ def test_long_section_resplit_with_overlap():
     assert len(body_chunks) >= 2
     assert body_chunks[0].page_content[-60:] in body_chunks[1].page_content
     assert all(c.metadata["headers"] == "长文" for c in chunks)
+
+
+def test_load_documents_walks_tree(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.md").write_text("# A\n\n内容甲。", encoding="utf-8")
+    (tmp_path / "sub" / "b.md").write_text("# B\n\n内容乙。", encoding="utf-8")
+    (tmp_path / "ignore.txt").write_text("非 markdown", encoding="utf-8")
+    chunks = load_documents(tmp_path)
+    assert {c.metadata["source"] for c in chunks} == {"a.md", "sub/b.md"}
