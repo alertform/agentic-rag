@@ -1,0 +1,15 @@
+{"question": "Array 的 flatMap 方法返回什么?", "expected_source": "web/javascript/reference/global_objects/array/flatmap/index.md"}
+{"question": "Promise.allSettled 和 Promise.all 有什么区别?", "expected_source": "web/javascript/reference/global_objects/promise/allsettled/index.md"}
+{"question": "async function 声明的函数返回什么?", "expected_source": "web/javascript/reference/statements/async_function/index.md"}
+{"question": "JavaScript 的 Map 和 Object 有什么区别?", "expected_source": "web/javascript/reference/global_objects/map/index.md"}
+{"question": "可选链运算符 ?. 的作用是什么?", "expected_source": "web/javascript/reference/operators/optional_chaining/index.md"}
+{"question": "Proxy 对象可以拦截哪些基本操作?", "expected_source": "web/javascript/reference/global_objects/proxy/index.md"}
+{"question": "z-index 属性对哪些元素生效?", "expected_source": "web/css/reference/properties/z-index/index.md"}
+{"question": "CSS 的 flex 是哪些属性的简写?", "expected_source": "web/css/reference/properties/flex/index.md"}
+{"question": "如何用媒体查询针对不同屏幕宽度应用样式?", "expected_source": "web/css/guides/media_queries/using/index.md"}
+{"question": "CSS 优先级 specificity 是如何计算的?", "expected_source": "web/css/guides/cascade/specificity/index.md"}
+{"question": "grid-template-areas 属性怎么定义网格区域?", "expected_source": "web/css/reference/properties/grid-template-areas/index.md"}
+{"question": "canvas 元素的用途是什么?", "expected_source": "web/html/reference/elements/canvas/index.md"}
+{"question": "template 元素有什么特点?", "expected_source": "web/html/reference/elements/template/index.md"}
+{"question": "HTML 表单的 autocomplete 属性有哪些取值?", "expected_source": "web/html/reference/attributes/autocomplete/index.md"}
+{"question": "grid-template-areas 语法里的点号表示什么?", "expected_source": "web/css/reference/properties/grid-template-areas/index.md"}

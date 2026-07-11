@@ -100,6 +100,8 @@ def sync_vector_store(store, chunks: list[Document], batch_size: int | None = No
 
     新增块按 batch_size 分批嵌入写库(数万块场景避免单次超大请求,并输出进度)。
     """
+    import time
+
     size = batch_size or config.EMBED_BATCH
     desired = {chunk_id(c): c for c in chunks}
     existing = set(store.get()["ids"])
@@ -107,7 +109,15 @@ def sync_vector_store(store, chunks: list[Document], batch_size: int | None = No
     stale_ids = [i for i in existing if i not in desired]
     for offset in range(0, len(new_ids), size):
         batch = new_ids[offset : offset + size]
-        store.add_documents([desired[i] for i in batch], ids=batch)
+        for attempt in range(3):  # 嵌入服务偶发崩溃会自动重启,重试即恢复
+            try:
+                store.add_documents([desired[i] for i in batch], ids=batch)
+                break
+            except Exception as exc:
+                if attempt == 2:
+                    raise
+                print(f"[ingest] 批次失败重试 {attempt + 1}/2: {exc}", flush=True)
+                time.sleep(5)
         if len(new_ids) > size:
             print(f"[ingest] 嵌入进度: {min(offset + size, len(new_ids))}/{len(new_ids)}", flush=True)
     if stale_ids:
