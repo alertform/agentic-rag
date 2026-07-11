@@ -15,7 +15,7 @@ def load_acl(docs_dir: Path) -> list[tuple[str, str]]:
     acl_file = docs_dir / "acl.json"
     if not acl_file.is_file():
         return []
-    data = json.loads(acl_file.read_text(encoding="utf-8"))
+    data = json.loads(acl_file.read_text(encoding="utf-8-sig"))  # 兼容 Windows BOM
     return list(data.items())
 
 

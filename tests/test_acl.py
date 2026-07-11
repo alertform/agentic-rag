@@ -23,6 +23,14 @@ def test_no_acl_file_all_public(tmp_path):
     assert access_for("anything.md", []) == "public"
 
 
+def test_acl_json_with_utf8_bom(tmp_path):
+    # Windows PowerShell 写的 JSON 常带 BOM,必须兼容
+    payload = json.dumps({"*.pdf": "internal"}).encode("utf-8")
+    (tmp_path / "acl.json").write_bytes(b"\xef\xbb\xbf" + payload)
+    rules = load_acl(tmp_path)
+    assert access_for("suppliers.pdf", rules) == "internal"
+
+
 def test_ingest_stamps_access(tmp_path):
     (tmp_path / "menu.md").write_text("# 菜单\n\n拿铁 32 元。", encoding="utf-8")
     (tmp_path / "salary.md").write_text("# 工资\n\n保密内容。", encoding="utf-8")

@@ -127,13 +127,22 @@ def video_to_documents(
 
 
 def make_whisper_transcriber(model_size: str = "small") -> Transcriber:
-    """懒加载 faster-whisper;模型经 HF_ENDPOINT 镜像下载(默认 hf-mirror)。"""
+    """懒加载 faster-whisper。
+
+    优先用本地模型目录 models/faster-whisper-<size>(可 curl 从镜像直接下载,
+    见 README);否则经 HF_ENDPOINT 镜像下载(默认 hf-mirror)。
+    """
     import os
 
+    from agentic_rag import config
+
+    local_dir = config.PROJECT_ROOT / "models" / f"faster-whisper-{model_size}"
+    target = str(local_dir) if local_dir.is_dir() else model_size
     os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(model_size, device="auto", compute_type="int8")
+    # CPU int8:small 模型转写快于实时,且不依赖 CUDA 运行库(cublas/cudnn)
+    model = WhisperModel(target, device="cpu", compute_type="int8")
 
     def transcribe(path: str) -> list[Segment]:
         raw_segments, _info = model.transcribe(path, language="zh")

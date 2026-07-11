@@ -1,6 +1,6 @@
 # agentic-rag
 
-LangChain + LangGraph 的本地 agentic RAG。全链路离线:Ollama(qwen3.5:9b + bge-m3)+ Chroma,无需任何 API key。支持 Markdown / PDF 多格式语料、增量索引、BM25+向量混合检索。
+LangChain + LangGraph 的本地 agentic RAG。全链路离线:Ollama(qwen3.5:9b + bge-m3)+ Chroma,无需任何 API key。支持 Markdown / PDF / 音频 / 视频多模态语料、增量索引、BM25+向量混合检索、ACL 权限过滤。
 
 ## 前置条件
 
@@ -17,24 +17,35 @@ uv run python -m agentic_rag.ingest --rebuild  # 全量重建向量库
 uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 ```
 
-- 语料格式:`.md` 直读;`.pdf` 经 pymupdf4llm 归一化为 markdown 后进同一切块管道
+- 语料格式:`.md` 直读;`.pdf` 经 pymupdf4llm 归一化;`.wav/.mp3/.m4a` 经 faster-whisper 转写(时间窗分段,引用带时间戳);`.mp4/.mov` 音轨转写 + 关键帧经 qwen3.5 vision 描述
 - 增量索引:块级内容哈希做稳定 ID,只嵌入新增/变更块、清理已消失块;重跑输出"新增 0, 删除 0"
-- 试试问:"星尘咖啡馆的招牌饮品是什么?"或"供应商 NX-42 供应什么?"(后者在 PDF 语料里,编号类词面命中主要靠 BM25 通道)
+- 权限过滤:语料目录放 `acl.json`(glob → access 级别),`chat --role public|staff|manager` 决定检索可见范围(向量与 BM25 双通道过滤)
+- 试试问:"星尘咖啡馆的招牌饮品是什么?"、"供应商 NX-42 供应什么?"(PDF,编号词面命中靠 BM25)、"例会决定新店选址在哪?"(音频)、"SP-2026 评审的是什么新品?"(视频画面)
+- 首次带媒体语料 ingest 需要 faster-whisper small 模型(约 460MB)。国内网络推荐从 ModelScope 直接下载到本地目录(实测比 hf-mirror 快若干量级),`media` 模块会优先使用:
+
+  ```bash
+  mkdir -p models/faster-whisper-small && cd models/faster-whisper-small
+  for f in config.json tokenizer.json vocabulary.txt model.bin; do
+    curl -sLO "https://modelscope.cn/models/gpustack/faster-whisper-small/resolve/master/$f"
+  done
+  ```
 
 ## 架构
 
 - `parsers`:类型路由把多格式文档归一化为 markdown(文本是索引,原始文件是档案)
-- `ingest`:解析 → 标题切块(超长二次切分)→ bge-m3 向量化 → Chroma 增量同步
-- `retrieval`:jieba 分词 BM25 + 向量检索,RRF 融合(编号/专名词面命中兜底向量盲区)
+- `media`:音频 ASR 时间窗分段、视频关键帧 + VLM 描述——时间轴 locator 复用 headers 字段,引用格式零改动
+- `acl`:acl.json glob 规则给块打 access 标,检索按角色可见范围过滤
+- `ingest`:解析/转写 → 切块 → bge-m3 向量化 → Chroma 增量同步
+- `retrieval`:jieba 分词 BM25 + 向量检索,RRF 融合(编号/专名词面命中兜底向量盲区)+ ACL 双通道过滤
 - `graph`:手写 LangGraph StateGraph,agent 节点(qwen3.5:9b)⇄ ToolNode 循环,模型自主决定检索时机与 query
 - `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源
 
 ## 企业演进路线
 
-Phase 2 规划:音视频接入(ASR 转写 + 关键帧 VLM 描述,metadata 带时间戳指回原始媒体)、权限过滤(metadata ACL)、重排序(reranker 精排)。
+Phase 3 规划:重排序(跨编码器精排)、多租户 collection 隔离、评估集与检索质量观测。
 
 设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`
-实现计划:`docs/superpowers/plans/2026-07-11-agentic-rag-demo.md`、`docs/superpowers/plans/2026-07-11-enterprise-ingest.md`
+实现计划:`docs/superpowers/plans/2026-07-11-agentic-rag-demo.md`、`docs/superpowers/plans/2026-07-11-enterprise-ingest.md`、`docs/superpowers/plans/2026-07-11-enterprise-media-acl.md`
 
 ## 测试
 

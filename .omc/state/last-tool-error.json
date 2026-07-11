@@ -1,0 +1,7 @@
+{
+  "tool_name": "PowerShell",
+  "tool_input_preview": "{\"command\":\"Set-Location F:\\\\agentic-rag; uv run pytest -q; if ($?) { uv run python -c \\\"import agentic_rag.chat; print('import ok')\\\" }\",\"timeout\":300000,\"description\":\"Run full suite with ACL tests ...",
+  "error": "Exit code 1\n...F.................................                                    [100%]\r\n================================== FAILURES ===================================\r\n_______________________ test_bm25_prefilters_by_access ________________________\r\n\r\n    def test_bm25_prefilters_by_access():\r\n        docs = [\r\n            _doc(\"�����������۸� 32 Ԫ��\", \"public\"),\r\n            _doc(\"�ڲ��Ĺ�Ӧ�� NX-42 ������\", \"internal\"),\r\n        ]\r\n        restricted = HybridRetriever(StubStore([]), docs, all...",
+  "timestamp": "2026-07-11T09:44:26.959Z",
+  "retry_count": 1
+}
