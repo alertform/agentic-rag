@@ -9,6 +9,9 @@ dependencies = [
     "langchain-ollama>=0.3",
     "langchain-chroma>=0.2",
     "langchain-text-splitters>=0.3",
+    "pymupdf4llm>=1.28.0",
+    "rank-bm25>=0.2.2",
+    "jieba>=0.42.1",
 ]
 
 [dependency-groups]

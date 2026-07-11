@@ -33,11 +33,17 @@ def split_markdown(text: str, source: str) -> list[Document]:
 
 
 def load_documents(docs_dir: Path) -> list[Document]:
-    """递归加载目录下所有 .md,返回切好的块。"""
+    """递归加载目录下所有受支持格式的文档(经解析层归一化为 markdown),返回切好的块。"""
+    from agentic_rag.parsers import SUPPORTED_EXTENSIONS, parse_file
+
     chunks: list[Document] = []
-    for md_file in sorted(docs_dir.rglob("*.md")):
-        source = md_file.relative_to(docs_dir).as_posix()
-        chunks.extend(split_markdown(md_file.read_text(encoding="utf-8"), source))
+    files = sorted(
+        p for p in docs_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
+    for file in files:
+        source = file.relative_to(docs_dir).as_posix()
+        chunks.extend(split_markdown(parse_file(file), source))
     return chunks
 
 
@@ -68,7 +74,7 @@ def main() -> None:
     check_ollama(require_generation=False)
     chunks = load_documents(docs_dir)
     if not chunks:
-        sys.exit(f"[ingest] {docs_dir} 下没有 .md 文件")
+        sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf)")
     build_vector_store(chunks)
     print(f"[ingest] 已索引 {len(chunks)} 个文档块 ← {docs_dir}")
 
