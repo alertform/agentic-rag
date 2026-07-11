@@ -43,6 +43,10 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 - `evals`:golden set 检索评估,`uv run python -m agentic_rag.evals` 输出纯向量 vs 混合的 hit@k / MRR;**每次 ingest 默认语料目录后自动跑一次**
 - `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源;缓存命中显示 ⚡ 并秒回;对话历史在 LLM 视图层裁剪(最近 `HISTORY_KEEP_TURNS` 轮完整,更早轮次仅留问答对),`num_ctx` 提升至 16K
 
+## 规模实验(21,838 块实测)
+
+MDN 中文文档(1,921 文件)实测:嵌入 69 块/s;检索 hit@5 双通道 100%,p50 213ms;BM25 持久化索引启动加载 0.20s(vs 现场重建 8.9s)。完整数字与结论见 `docs/benchmarks/2026-07-11-scale-test.md`。多语料共存:`ingest <目录> --collection <名>`,chat/evals 同参。
+
 ## 工程决策记录
 
 - **暂不上重排序(reranker)**:当前语料规模下评估显示纯向量与混合检索均 hit@5=100%、MRR=1.0——排序不是瓶颈,跨编码器还需 ~2.5GB torch 依赖。待语料上规模、评估分数出现分化时再引入(评估集已就位,决策有数据依据)。
@@ -51,9 +55,11 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 - **历史裁剪在 LLM 视图层而非状态层**:checkpointer 保留完整历史(可审计、可回放),只在拼 prompt 时裁剪;旧轮次的检索块已被回答蒸馏,成对裁掉 tool_calls/ToolMessage 损失最小且保证消息序列合法。
 - **多租户延后**:collection-per-tenant 是纯配置管道,单机 demo 无第二租户场景;需要时按"每租户独立 collection + 独立缓存 + 租户级 ACL 根规则"落地即可。
 
+- **混合检索按语料特征取舍**:规模实验发现 BM25 的价值依语料反转——稀有实体词语料(编号/专名)上是召回救星,术语密集语料(MDN)上反而注入噪声(MRR -0.011、p95 延迟 2.6x)。下一步杠杆是查询特征路由(稀有词才开 BM25 通道)而非重排序。
+
 ## 企业演进路线
 
-Phase 5 候选:重排序(评估分化后)、多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/缓存命中率时序)。
+Phase 6 候选:查询特征路由/加权 RRF、多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/缓存命中率时序)。
 
 设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`
 实现计划:`docs/superpowers/plans/` 下按日期排列(基础版 → 多格式+增量+混合检索 → 音视频+ACL → 语义缓存+评估)
