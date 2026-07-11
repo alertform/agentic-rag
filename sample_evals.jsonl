@@ -1,0 +1,10 @@
+{"question": "星尘咖啡馆的招牌饮品是什么?", "expected_source": "menu.md", "role": "manager"}
+{"question": "环形山贝果每天限量多少个?", "expected_source": "menu.md", "role": "manager"}
+{"question": "星环会员年费多少?有哪些权益?", "expected_source": "membership.md", "role": "manager"}
+{"question": "积分多久过期?", "expected_source": "membership.md", "role": "manager"}
+{"question": "星尘咖啡馆每周三营业吗?", "expected_source": "operations.md", "role": "manager"}
+{"question": "望远镜之夜是什么活动?", "expected_source": "operations.md", "role": "manager"}
+{"question": "供应商 NX-42 供应什么?", "expected_source": "suppliers.pdf", "role": "staff"}
+{"question": "燕麦奶是哪家供应商配送的?", "expected_source": "suppliers.pdf", "role": "staff"}
+{"question": "例会决定新店选址在哪个区?", "expected_source": "meeting.wav", "role": "manager"}
+{"question": "SP-2026 评审的新品是什么?", "expected_source": "review.mp4", "role": "manager"}
