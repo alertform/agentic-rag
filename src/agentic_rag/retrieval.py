@@ -24,12 +24,28 @@ def load_all_chunks(vector_store) -> list[Document]:
 
 
 class HybridRetriever:
-    """鸭子类型兼容向量库接口(similarity_search),内部做 BM25+向量 RRF 融合。"""
+    """鸭子类型兼容向量库接口(similarity_search),内部做 BM25+向量 RRF 融合。
 
-    def __init__(self, vector_store, docs: list[Document], k_each: int = 20):
+    allowed_access 非 None 时启用 ACL 过滤:BM25 建索引前预过滤,
+    向量通道透传 Chroma metadata filter——两条通道都过滤,不留旁路。
+    """
+
+    def __init__(
+        self,
+        vector_store,
+        docs: list[Document],
+        k_each: int = 20,
+        allowed_access: set[str] | None = None,
+    ):
         from rank_bm25 import BM25Okapi
 
         self._vector_store = vector_store
+        self._allowed = allowed_access
+        if allowed_access is not None:
+            docs = [
+                d for d in docs
+                if d.metadata.get("access", "public") in allowed_access
+            ]
         self._docs = docs
         self._k_each = k_each
         self._bm25 = BM25Okapi([_tokenize(d.page_content) for d in docs]) if docs else None
@@ -42,7 +58,14 @@ class HybridRetriever:
         return [self._docs[i] for i in ranked[:k] if scores[i] > 0]
 
     def similarity_search(self, query: str, k: int) -> list[Document]:
-        vector_hits = self._vector_store.similarity_search(query, k=self._k_each)
+        if self._allowed is None:
+            vector_hits = self._vector_store.similarity_search(query, k=self._k_each)
+        else:
+            vector_hits = self._vector_store.similarity_search(
+                query,
+                k=self._k_each,
+                filter={"access": {"$in": sorted(self._allowed)}},
+            )
         bm25_hits = self._bm25_search(query, k=self._k_each)
 
         fused: dict[str, tuple[float, Document]] = {}

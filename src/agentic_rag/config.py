@@ -10,6 +10,13 @@ SAMPLE_DOCS_DIR = PROJECT_ROOT / "sample_docs"
 CHROMA_DIR = PROJECT_ROOT / "chroma_db"
 COLLECTION_NAME = "agentic_rag"
 
+# 角色 → 可见 access 级别(块的 access 由语料目录 acl.json 决定,默认 public)
+ROLE_ACCESS = {
+    "public": {"public"},
+    "staff": {"public", "internal"},
+    "manager": {"public", "internal", "confidential"},
+}
+
 CHUNK_SIZE = 800       # 二次切分块大小(字符)
 CHUNK_OVERLAP = 120    # 块间重叠,约 15%
 TOP_K = 5              # 检索返回块数

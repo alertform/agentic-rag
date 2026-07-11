@@ -15,6 +15,18 @@ _SOURCE_RE = re.compile(r"\[来源: ([^|\]]+?) \|")
 
 
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Agentic RAG CLI 问答")
+    parser.add_argument(
+        "--role",
+        default="manager",
+        choices=sorted(config.ROLE_ACCESS),
+        help="提问者角色,决定检索可见范围 (默认 manager 全可见)",
+    )
+    cli_args = parser.parse_args()
+    allowed_access = config.ROLE_ACCESS[cli_args.role]
+
     preflight.check_ollama()
     preflight.check_vector_store()
 
@@ -26,7 +38,9 @@ def main() -> None:
         embedding_function=embeddings,
         persist_directory=str(config.CHROMA_DIR),
     )
-    retriever = HybridRetriever(store, load_all_chunks(store))
+    retriever = HybridRetriever(
+        store, load_all_chunks(store), allowed_access=allowed_access
+    )
     retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=True)
     # reasoning=False 关闭 qwen3 思考段;若所装 langchain-ollama 不支持该参数,删掉即可
     llm = ChatOllama(
@@ -38,7 +52,7 @@ def main() -> None:
         "recursion_limit": config.RECURSION_LIMIT,
     }
 
-    print("Agentic RAG demo — 输入问题开始对话,exit 退出")
+    print(f"Agentic RAG — 角色: {cli_args.role} | 输入问题开始对话,exit 退出")
     while True:
         try:
             question = input("\n你: ").strip()

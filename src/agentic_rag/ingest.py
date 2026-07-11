@@ -34,9 +34,14 @@ def split_markdown(text: str, source: str) -> list[Document]:
 
 
 def load_documents(docs_dir: Path) -> list[Document]:
-    """递归加载目录下所有受支持格式的文档(经解析层归一化为 markdown),返回切好的块。"""
+    """递归加载目录下所有受支持格式的文档(经解析层归一化为 markdown),返回切好的块。
+
+    块 metadata 按目录 acl.json 打 access 标(无规则默认 public)。
+    """
+    from agentic_rag.acl import access_for, load_acl
     from agentic_rag.parsers import SUPPORTED_EXTENSIONS, parse_file
 
+    rules = load_acl(docs_dir)
     chunks: list[Document] = []
     files = sorted(
         p for p in docs_dir.rglob("*")
@@ -45,12 +50,21 @@ def load_documents(docs_dir: Path) -> list[Document]:
     for file in files:
         source = file.relative_to(docs_dir).as_posix()
         chunks.extend(split_markdown(parse_file(file), source))
+    for chunk in chunks:
+        chunk.metadata["access"] = access_for(chunk.metadata["source"], rules)
     return chunks
 
 
 def chunk_id(doc: Document) -> str:
-    """块的稳定 ID:source+headers+内容 的 sha256 前 32 位;内容一变 ID 即变。"""
-    key = f"{doc.metadata['source']}|{doc.metadata['headers']}|{doc.page_content}"
+    """块的稳定 ID:source+headers+access+内容 的 sha256 前 32 位。
+
+    access 参与哈希:ACL 规则变更时旧块被替换,metadata 才能跟着更新。
+    """
+    meta = doc.metadata
+    key = (
+        f"{meta['source']}|{meta['headers']}|"
+        f"{meta.get('access', 'public')}|{doc.page_content}"
+    )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
