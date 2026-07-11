@@ -1,4 +1,5 @@
-"""离线索引管道:Markdown 目录 → 切块 → 向量化 → Chroma。"""
+"""离线索引管道:文档目录 → 解析归一化 → 切块 → 向量化 → Chroma(增量同步)。"""
+import hashlib
 import sys
 from pathlib import Path
 
@@ -47,8 +48,27 @@ def load_documents(docs_dir: Path) -> list[Document]:
     return chunks
 
 
-def build_vector_store(chunks: list[Document]):
-    """向量化写入本地 Chroma;先清空旧集合保证幂等。"""
+def chunk_id(doc: Document) -> str:
+    """块的稳定 ID:source+headers+内容 的 sha256 前 32 位;内容一变 ID 即变。"""
+    key = f"{doc.metadata['source']}|{doc.metadata['headers']}|{doc.page_content}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def sync_vector_store(store, chunks: list[Document]) -> tuple[int, int]:
+    """增量对账:只嵌入新增/变更的块,删除库里已消失的块;返回 (新增数, 删除数)。"""
+    desired = {chunk_id(c): c for c in chunks}
+    existing = set(store.get()["ids"])
+    new_ids = [i for i in desired if i not in existing]
+    stale_ids = [i for i in existing if i not in desired]
+    if new_ids:
+        store.add_documents([desired[i] for i in new_ids], ids=new_ids)
+    if stale_ids:
+        store.delete(ids=stale_ids)
+    return len(new_ids), len(stale_ids)
+
+
+def build_vector_store(chunks: list[Document], rebuild: bool = False):
+    """打开本地 Chroma 并同步块:默认增量;rebuild=True 时清空全量重建。"""
     from langchain_chroma import Chroma
     from langchain_ollama import OllamaEmbeddings
 
@@ -60,23 +80,30 @@ def build_vector_store(chunks: list[Document]):
         embedding_function=embeddings,
         persist_directory=str(config.CHROMA_DIR),
     )
-    store.reset_collection()
-    store.add_documents(chunks)
-    return store
+    if rebuild:
+        store.reset_collection()
+    added, removed = sync_vector_store(store, chunks)
+    return store, added, removed
 
 
 def main() -> None:
     from agentic_rag.preflight import check_ollama
 
-    docs_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else config.SAMPLE_DOCS_DIR
+    args = sys.argv[1:]
+    rebuild = "--rebuild" in args
+    positional = [a for a in args if not a.startswith("--")]
+    docs_dir = Path(positional[0]) if positional else config.SAMPLE_DOCS_DIR
     if not docs_dir.is_dir():
         sys.exit(f"[ingest] 目录不存在: {docs_dir}")
     check_ollama(require_generation=False)
     chunks = load_documents(docs_dir)
     if not chunks:
         sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf)")
-    build_vector_store(chunks)
-    print(f"[ingest] 已索引 {len(chunks)} 个文档块 ← {docs_dir}")
+    _, added, removed = build_vector_store(chunks, rebuild=rebuild)
+    mode = "全量重建" if rebuild else "增量同步"
+    print(
+        f"[ingest] {mode}完成: 共 {len(chunks)} 块 (新增 {added}, 删除 {removed}) ← {docs_dir}"
+    )
 
 
 if __name__ == "__main__":
