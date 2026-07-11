@@ -1,11 +1,11 @@
 # agentic-rag-demo
 
-LangChain + LangGraph 的本地 agentic RAG 练手项目。全链路离线:Ollama(qwen3:14b + bge-m3)+ Chroma,无需任何 API key。
+LangChain + LangGraph 的本地 agentic RAG 练手项目。全链路离线:Ollama(qwen3:8b + bge-m3)+ Chroma,无需任何 API key。
 
 ## 前置条件
 
 1. 安装 [Ollama](https://ollama.com) 并启动:`ollama serve`
-2. 拉取模型:`ollama pull qwen3:14b && ollama pull bge-m3`(机器吃紧可在 `config.py` 换回 `qwen3:8b`,但检索触发的稳定性会下降)
+2. 拉取模型:`ollama pull qwen3:8b && ollama pull bge-m3`(若发现模型偷懒不检索,可在 `config.py` 换成 `qwen3:14b`,但需 10GB+ 显存才不掉速)
 3. 安装 [uv](https://docs.astral.sh/uv/)
 
 ## 使用
@@ -21,7 +21,7 @@ uv run python -m agentic_rag.chat         # 开始问答,exit 退出
 ## 架构
 
 - `ingest`:Markdown 按标题切块(超长二次切分)→ bge-m3 向量化 → 本地 Chroma
-- `graph`:手写 LangGraph StateGraph,agent 节点(qwen3:14b)⇄ ToolNode 循环,模型自主决定检索时机与 query
+- `graph`:手写 LangGraph StateGraph,agent 节点(qwen3:8b)⇄ ToolNode 循环,模型自主决定检索时机与 query
 - `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源
 
 设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`

@@ -2,7 +2,7 @@
 from pathlib import Path
 
 OLLAMA_BASE_URL = "http://localhost:11434"
-GENERATION_MODEL = "qwen3:14b"
+GENERATION_MODEL = "qwen3:8b"
 EMBEDDING_MODEL = "bge-m3"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
