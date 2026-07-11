@@ -17,6 +17,9 @@ ROLE_ACCESS = {
     "manager": {"public", "internal", "confidential"},
 }
 
+CACHE_COLLECTION = "qa_cache"      # 语义缓存独立 collection,不进检索池
+CACHE_DISTANCE_THRESHOLD = 0.10    # cosine 距离阈值,超过视为不同问题
+
 CHUNK_SIZE = 800       # 二次切分块大小(字符)
 CHUNK_OVERLAP = 120    # 块间重叠,约 15%
 TOP_K = 5              # 检索返回块数
