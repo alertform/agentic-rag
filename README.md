@@ -1,4 +1,4 @@
-# agentic-rag-demo
+# agentic-rag
 
 LangChain + LangGraph 的本地 agentic RAG 练手项目。全链路离线:Ollama(qwen3.5:9b + bge-m3)+ Chroma,无需任何 API key。
 
