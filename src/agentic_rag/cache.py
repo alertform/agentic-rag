@@ -36,18 +36,35 @@ class SemanticCache:
         chunk_ids: list[str],
         access_levels: list[str],
     ) -> None:
+        entry_id = uuid.uuid4().hex
         self._store.add_texts(
             [question],
             metadatas=[
                 {
+                    "entry_id": entry_id,
                     "answer": answer,
                     "sources": ",".join(sorted(set(sources))),
                     "chunk_ids": ",".join(sorted(set(chunk_ids))),
                     "access_levels": ",".join(sorted(set(access_levels))),
+                    "hit_count": 0,
                 }
             ],
-            ids=[uuid.uuid4().hex],
+            ids=[entry_id],
         )
+
+    def entries(self) -> list[dict]:
+        """全部缓存条目(供 FAQ 候选导出等观测用途)。"""
+        data = self._store.get()
+        return [
+            {
+                "question": text,
+                "answer": meta["answer"],
+                "sources": meta["sources"].split(",") if meta["sources"] else [],
+                "hit_count": meta.get("hit_count", 0),
+                "access_levels": meta["access_levels"].split(","),
+            }
+            for text, meta in zip(data["documents"], data["metadatas"])
+        ]
 
     def lookup(
         self,
@@ -75,6 +92,13 @@ class SemanticCache:
         if not levels <= allowed_access:
             # 权限不足:对该提问者不命中,但条目对高权限角色仍有效,保留
             return None
+
+        # 命中计数(仅 metadata 更新,不重嵌入;FAQ 沉淀以此筛高频候选)
+        if "entry_id" in meta:
+            self._store._collection.update(
+                ids=[meta["entry_id"]],
+                metadatas=[{**meta, "hit_count": meta.get("hit_count", 0) + 1}],
+            )
 
         return CacheHit(
             question=doc.page_content,
