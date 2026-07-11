@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from agentic_rag import config, preflight
 from agentic_rag.graph import build_graph
+from agentic_rag.retrieval import HybridRetriever, load_all_chunks
 from agentic_rag.tools import make_retrieve_tool
 
 _SOURCE_RE = re.compile(r"\[来源: ([^|\]]+?) \|")
@@ -25,7 +26,8 @@ def main() -> None:
         embedding_function=embeddings,
         persist_directory=str(config.CHROMA_DIR),
     )
-    retrieve = make_retrieve_tool(store, k=config.TOP_K, verbose=True)
+    retriever = HybridRetriever(store, load_all_chunks(store))
+    retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=True)
     # reasoning=False 关闭 qwen3 思考段;若所装 langchain-ollama 不支持该参数,删掉即可
     llm = ChatOllama(
         model=config.GENERATION_MODEL, base_url=config.OLLAMA_BASE_URL, reasoning=False
