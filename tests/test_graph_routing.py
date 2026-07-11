@@ -44,3 +44,64 @@ def test_checkpointer_keeps_history_across_turns():
     app.invoke({"messages": [HumanMessage("问题A")]}, cfg)
     result = app.invoke({"messages": [HumanMessage("问题B")]}, cfg)
     assert [m.type for m in result["messages"]] == ["human", "ai", "human", "ai"]
+
+
+def _tool_turn(tag):
+    from langchain_core.messages import ToolMessage
+
+    return [
+        HumanMessage(f"问题{tag}"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "retrieve_docs", "args": {"query": tag}, "id": f"c{tag}", "type": "tool_call"}],
+        ),
+        ToolMessage(content=f"块内容{tag}", tool_call_id=f"c{tag}"),
+        AIMessage(content=f"回答{tag}"),
+    ]
+
+
+def test_trim_keeps_short_history_intact():
+    from agentic_rag.graph import trim_for_llm
+
+    msgs = _tool_turn("A")
+    assert trim_for_llm(msgs, keep_turns=4) == msgs
+
+
+def test_trim_drops_tool_pairs_from_old_turns():
+    from langchain_core.messages import ToolMessage
+
+    from agentic_rag.graph import trim_for_llm
+
+    msgs = _tool_turn("A") + _tool_turn("B") + _tool_turn("C")
+    trimmed = trim_for_llm(msgs, keep_turns=1)
+    # 旧轮(A/B)只留问答对;最近一轮(C)完整保留
+    assert [m.content for m in trimmed[:4]] == ["问题A", "回答A", "问题B", "回答B"]
+    assert [m.type for m in trimmed[4:]] == ["human", "ai", "tool", "ai"]
+    # 序列合法性:无孤立的 tool_calls AI 或 ToolMessage
+    for i, m in enumerate(trimmed):
+        if isinstance(m, ToolMessage):
+            assert getattr(trimmed[i - 1], "tool_calls", None), "ToolMessage 前必须是 tool_calls AI"
+        if getattr(m, "tool_calls", None):
+            assert isinstance(trimmed[i + 1], ToolMessage), "tool_calls AI 后必须跟 ToolMessage"
+
+
+def test_agent_sees_trimmed_view_but_state_keeps_all(monkeypatch):
+    from agentic_rag import config
+
+    monkeypatch.setattr(config, "HISTORY_KEEP_TURNS", 1)
+    captured: list[int] = []
+
+    class SpyModel(GenericFakeChatModel):
+        def invoke(self, input, *args, **kwargs):
+            captured.append(len(input))
+            return super().invoke(input, *args, **kwargs)
+
+    llm = SpyModel(messages=iter(AIMessage(content=f"回答{i}") for i in range(4)))
+    app = build_graph(llm, [retrieve_docs], checkpointer=MemorySaver())
+    cfg = {"configurable": {"thread_id": "trim"}}
+    for i in range(4):
+        result = app.invoke({"messages": [HumanMessage(f"问题{i}")]}, cfg)
+
+    assert len(result["messages"]) == 8, "checkpointer 状态应完整保留 4 轮 8 条"
+    # 第 4 轮 LLM 收到: System(1) + 3 轮旧问答(6) + 本轮问题(1) = 8
+    assert captured[-1] == 8

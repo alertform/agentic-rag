@@ -126,6 +126,35 @@ def video_to_documents(
     return docs
 
 
+def cached_media_documents(file_path, source: str, cache_dir, builder) -> list[Document]:
+    """媒体解析缓存:按文件内容 sha256 缓存 builder() 的产物。
+
+    ASR/VLM 是采样式解析,同一文件重复解析文本会微变 → 块哈希变 → 增量索引被
+    无意义搅动,且白付模型开销。文件不变即复用缓存,变了才重新解析。
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(Path(file_path).read_bytes()).hexdigest()[:32]
+    cache_file = cache_dir / f"{digest}.json"
+    if cache_file.is_file():
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+        return [Document(page_content=e["page_content"], metadata=e["metadata"]) for e in payload]
+
+    docs = builder()
+    cache_file.write_text(
+        json.dumps(
+            [{"page_content": d.page_content, "metadata": d.metadata} for d in docs],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return docs
+
+
 def make_whisper_transcriber(model_size: str = "small") -> Transcriber:
     """懒加载 faster-whisper。
 

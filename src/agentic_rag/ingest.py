@@ -33,11 +33,14 @@ def split_markdown(text: str, source: str) -> list[Document]:
     return chunks
 
 
-def load_documents(docs_dir: Path, transcriber=None, captioner=None) -> list[Document]:
+def load_documents(
+    docs_dir: Path, transcriber=None, captioner=None, media_cache_dir=None
+) -> list[Document]:
     """递归加载目录下所有受支持格式的文档/媒体,归一化为带 metadata 的文本块。
 
     - 文档(md/pdf):解析为 markdown 后按标题切块
     - 音频:需注入 transcriber,按时间窗分段;视频:另需 captioner 做帧描述
+    - 媒体解析结果按文件内容哈希缓存(media_cache_dir),文件不变不重解析
     - 未注入转写/描述器时跳过对应媒体文件
     - 块 metadata 按目录 acl.json 打 access 标(无规则默认 public)
     """
@@ -45,11 +48,14 @@ def load_documents(docs_dir: Path, transcriber=None, captioner=None) -> list[Doc
     from agentic_rag.media import (
         SUPPORTED_AUDIO,
         SUPPORTED_VIDEO,
+        cached_media_documents,
         segments_to_documents,
         video_to_documents,
     )
     from agentic_rag.parsers import SUPPORTED_EXTENSIONS, parse_file
 
+    if media_cache_dir is None:
+        media_cache_dir = config.MEDIA_CACHE_DIR
     rules = load_acl(docs_dir)
     chunks: list[Document] = []
     for file in sorted(p for p in docs_dir.rglob("*") if p.is_file()):
@@ -58,10 +64,18 @@ def load_documents(docs_dir: Path, transcriber=None, captioner=None) -> list[Doc
         if suffix in SUPPORTED_EXTENSIONS:
             chunks.extend(split_markdown(parse_file(file), source))
         elif suffix in SUPPORTED_AUDIO and transcriber is not None:
-            chunks.extend(segments_to_documents(transcriber(str(file)), source))
+            chunks.extend(
+                cached_media_documents(
+                    file, source, media_cache_dir,
+                    lambda f=file, s=source: segments_to_documents(transcriber(str(f)), s),
+                )
+            )
         elif suffix in SUPPORTED_VIDEO and transcriber is not None and captioner is not None:
             chunks.extend(
-                video_to_documents(str(file), source, transcriber, captioner)
+                cached_media_documents(
+                    file, source, media_cache_dir,
+                    lambda f=file, s=source: video_to_documents(str(f), s, transcriber, captioner),
+                )
             )
     for chunk in chunks:
         chunk.metadata["access"] = access_for(chunk.metadata["source"], rules)
@@ -144,11 +158,21 @@ def main() -> None:
     chunks = load_documents(docs_dir, transcriber=transcriber, captioner=captioner)
     if not chunks:
         sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf/wav/mp3/mp4)")
-    _, added, removed = build_vector_store(chunks, rebuild=rebuild)
+    store, added, removed = build_vector_store(chunks, rebuild=rebuild)
     mode = "全量重建" if rebuild else "增量同步"
     print(
         f"[ingest] {mode}完成: 共 {len(chunks)} 块 (新增 {added}, 删除 {removed}) ← {docs_dir}"
     )
+
+    # 语料一变就跑一次检索评估(仅默认语料目录且 golden set 存在;失败不阻塞 ingest)
+    golden_path = config.PROJECT_ROOT / "sample_evals.jsonl"
+    if docs_dir.resolve() == config.SAMPLE_DOCS_DIR.resolve() and golden_path.is_file():
+        from agentic_rag.evals import run_evals
+
+        try:
+            run_evals(store, chunks, golden_path)
+        except Exception as exc:  # 评估是观测手段,不应让索引失败
+            print(f"[ingest] 评估跳过: {exc}")
 
 
 if __name__ == "__main__":

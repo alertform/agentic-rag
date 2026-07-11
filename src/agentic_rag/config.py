@@ -8,6 +8,7 @@ EMBEDDING_MODEL = "bge-m3"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SAMPLE_DOCS_DIR = PROJECT_ROOT / "sample_docs"
 CHROMA_DIR = PROJECT_ROOT / "chroma_db"
+MEDIA_CACHE_DIR = PROJECT_ROOT / ".media_cache"  # 媒体解析缓存(按文件内容哈希)
 COLLECTION_NAME = "agentic_rag"
 
 # 角色 → 可见 access 级别(块的 access 由语料目录 acl.json 决定,默认 public)
@@ -24,3 +25,5 @@ CHUNK_SIZE = 800       # 二次切分块大小(字符)
 CHUNK_OVERLAP = 120    # 块间重叠,约 15%
 TOP_K = 5              # 检索返回块数
 RECURSION_LIMIT = 10   # 图递归上限,防无限检索循环
+NUM_CTX = 16384        # Ollama 上下文窗口(默认 4096 多轮带检索块很快截断)
+HISTORY_KEEP_TURNS = 4 # LLM 视图保留完整消息的最近轮数,更早轮次仅留问答对

@@ -41,25 +41,11 @@ def sources_in_rank_order(docs) -> list[str]:
     return ordered
 
 
-def main() -> None:
-    from langchain_chroma import Chroma
-    from langchain_ollama import OllamaEmbeddings
+def run_evals(store, chunks, golden_path: Path) -> None:
+    """对给定向量库与块集跑 golden set,打印分通道 hit@k / MRR。"""
+    from agentic_rag.retrieval import HybridRetriever
 
-    from agentic_rag.preflight import check_ollama
-    from agentic_rag.retrieval import HybridRetriever, load_all_chunks
-
-    check_ollama(require_generation=False)
-    embeddings = OllamaEmbeddings(
-        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
-    )
-    store = Chroma(
-        collection_name=config.COLLECTION_NAME,
-        embedding_function=embeddings,
-        persist_directory=str(config.CHROMA_DIR),
-    )
-    chunks = load_all_chunks(store)
-    golden = load_golden(config.PROJECT_ROOT / "sample_evals.jsonl")
-
+    golden = load_golden(golden_path)
     k = config.TOP_K
     agg = {"纯向量": [0, 0.0], "混合": [0, 0.0]}
     misses: list[str] = []
@@ -80,6 +66,25 @@ def main() -> None:
         print(f"  {mode}: hit@{k} = {hits}/{n} ({hits / n:.0%}), MRR = {rr_sum / n:.3f}")
     if misses:
         print("\n".join(misses))
+
+
+def main() -> None:
+    from langchain_chroma import Chroma
+    from langchain_ollama import OllamaEmbeddings
+
+    from agentic_rag.preflight import check_ollama
+    from agentic_rag.retrieval import load_all_chunks
+
+    check_ollama(require_generation=False)
+    embeddings = OllamaEmbeddings(
+        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
+    )
+    store = Chroma(
+        collection_name=config.COLLECTION_NAME,
+        embedding_function=embeddings,
+        persist_directory=str(config.CHROMA_DIR),
+    )
+    run_evals(store, load_all_chunks(store), config.PROJECT_ROOT / "sample_evals.jsonl")
 
 
 if __name__ == "__main__":

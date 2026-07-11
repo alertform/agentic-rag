@@ -48,7 +48,10 @@ def main() -> None:
     live_chunk_ids = set(store.get()["ids"])
     # reasoning=False 关闭 qwen3 思考段;若所装 langchain-ollama 不支持该参数,删掉即可
     llm = ChatOllama(
-        model=config.GENERATION_MODEL, base_url=config.OLLAMA_BASE_URL, reasoning=False
+        model=config.GENERATION_MODEL,
+        base_url=config.OLLAMA_BASE_URL,
+        reasoning=False,
+        num_ctx=config.NUM_CTX,
     )
     app = build_graph(llm.bind_tools([retrieve]), [retrieve], checkpointer=MemorySaver())
     run_config = {

@@ -62,6 +62,29 @@ def test_load_documents_routes_media(tmp_path):
     assert all(d.metadata["access"] == "public" for d in docs), "媒体块也应打 access 标"
 
 
+def test_media_parse_cache_avoids_reprocessing(tmp_path):
+    from agentic_rag.ingest import load_documents
+
+    (tmp_path / "meeting.wav").write_bytes(b"audio-bytes-v1")
+    calls = {"n": 0}
+
+    def counting_transcriber(path):
+        calls["n"] += 1
+        return [Segment(0.0, 3.0, "会议内容。")]
+
+    cache_dir = tmp_path / ".cache"
+    docs1 = load_documents(tmp_path, transcriber=counting_transcriber, media_cache_dir=cache_dir)
+    docs2 = load_documents(tmp_path, transcriber=counting_transcriber, media_cache_dir=cache_dir)
+    assert calls["n"] == 1, "文件未变,第二次应命中解析缓存"
+    assert [d.page_content for d in docs1] == [d.page_content for d in docs2]
+    assert docs2[0].metadata["headers"] == "00:00:00 - 00:01:00"
+
+    # 文件内容变了 → 缓存失效,重新转写
+    (tmp_path / "meeting.wav").write_bytes(b"audio-bytes-v2")
+    load_documents(tmp_path, transcriber=counting_transcriber, media_cache_dir=cache_dir)
+    assert calls["n"] == 2
+
+
 def test_media_skipped_without_transcriber(tmp_path):
     from agentic_rag.ingest import load_documents
 
