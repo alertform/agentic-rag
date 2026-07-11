@@ -6,5 +6,6 @@
 {"question": "望远镜之夜是什么活动?", "expected_source": "operations.md", "role": "manager"}
 {"question": "供应商 NX-42 供应什么?", "expected_source": "suppliers.pdf", "role": "staff"}
 {"question": "燕麦奶是哪家供应商配送的?", "expected_source": "suppliers.pdf", "role": "staff"}
-{"question": "例会决定新店选址在哪个区?", "expected_source": "meeting.wav", "role": "manager"}
+{"question": "例会决定新店选址在哪个区?", "expected_source": "faq.md", "role": "manager"}
+{"question": "会员日活动新增了什么环节?", "expected_source": "meeting.wav", "role": "manager"}
 {"question": "SP-2026 评审的新品是什么?", "expected_source": "review.mp4", "role": "manager"}

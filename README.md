@@ -38,18 +38,22 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 - `ingest`:解析/转写 → 切块 → bge-m3 向量化 → Chroma 增量同步
 - `retrieval`:jieba 分词 BM25 + 向量检索,RRF 融合(编号/专名词面命中兜底向量盲区)+ ACL 双通道过滤
 - `graph`:手写 LangGraph StateGraph,agent 节点(qwen3.5:9b)⇄ ToolNode 循环,模型自主决定检索时机与 query
-- `cache`:QA 语义缓存(独立 collection,cosine 阈值命中)——**不进检索池**(模型生成内容不能无审核地成为检索来源);失效复用块内容哈希(源文档一变即作废);带 ACL 检查防跨角色泄漏
-- `evals`:golden set 检索评估,`uv run python -m agentic_rag.evals` 输出纯向量 vs 混合的 hit@k / MRR
-- `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源;缓存命中显示 ⚡ 并秒回
+- `cache`:QA 语义缓存(独立 collection,cosine 阈值命中)——**不进检索池**(模型生成内容不能无审核地成为检索来源);失效复用块内容哈希(源文档一变即作废);带 ACL 检查防跨角色泄漏;命中计数供 FAQ 沉淀筛选
+- `faq`:`python -m agentic_rag.faq` 导出高频问答候选 → 人工审核 → 放入 `sample_docs/faq.md` 重跑 ingest 入库(切块/哈希/ACL 全复用)——这是"模型内容不得无审核入库"边界的合规出口
+- `evals`:golden set 检索评估,`uv run python -m agentic_rag.evals` 输出纯向量 vs 混合的 hit@k / MRR;**每次 ingest 默认语料目录后自动跑一次**
+- `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源;缓存命中显示 ⚡ 并秒回;对话历史在 LLM 视图层裁剪(最近 `HISTORY_KEEP_TURNS` 轮完整,更早轮次仅留问答对),`num_ctx` 提升至 16K
 
 ## 工程决策记录
 
-- **暂不上重排序(reranker)**:当前语料 15 块,评估显示纯向量与混合检索均 hit@5=100%、MRR=1.0——排序不是瓶颈,跨编码器还需 ~2.5GB torch 依赖。待语料上规模、评估分数出现分化时再引入(评估集已就位,决策有数据依据)。
-- **语义缓存与知识库严格分离**:自动回写模型答案到检索池会造成幻觉自我固化(错误答案被后续检索引用,越滚越"可信")。缓存只做同问复用,三重防线:独立 collection、哈希失效、ACL 检查。
+- **暂不上重排序(reranker)**:当前语料规模下评估显示纯向量与混合检索均 hit@5=100%、MRR=1.0——排序不是瓶颈,跨编码器还需 ~2.5GB torch 依赖。待语料上规模、评估分数出现分化时再引入(评估集已就位,决策有数据依据)。
+- **语义缓存与知识库严格分离**:自动回写模型答案到检索池会造成幻觉自我固化(错误答案被后续检索引用,越滚越"可信")。缓存只做同问复用,三重防线:独立 collection、哈希失效、ACL 检查;沉淀入库的唯一通道是 FAQ 人工审核工作流。
+- **媒体解析缓存**:ASR/VLM 属采样式解析,同一文件重复解析文本会微变,导致块哈希变化、增量索引被无意义搅动且重复付模型开销——解析结果按文件内容哈希缓存(`.media_cache/`),文件不变不重解析。
+- **历史裁剪在 LLM 视图层而非状态层**:checkpointer 保留完整历史(可审计、可回放),只在拼 prompt 时裁剪;旧轮次的检索块已被回答蒸馏,成对裁掉 tool_calls/ToolMessage 损失最小且保证消息序列合法。
+- **多租户延后**:collection-per-tenant 是纯配置管道,单机 demo 无第二租户场景;需要时按"每租户独立 collection + 独立缓存 + 租户级 ACL 根规则"落地即可。
 
 ## 企业演进路线
 
-Phase 4 候选:重排序(评估分化后)、多租户 collection 隔离、对话历史管理(裁剪/滚动摘要)、FAQ 沉淀(自动收集 + 人工审核入库)。
+Phase 5 候选:重排序(评估分化后)、多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/缓存命中率时序)。
 
 设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`
 实现计划:`docs/superpowers/plans/` 下按日期排列(基础版 → 多格式+增量+混合检索 → 音视频+ACL → 语义缓存+评估)

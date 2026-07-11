@@ -25,5 +25,5 @@ CHUNK_SIZE = 800       # 二次切分块大小(字符)
 CHUNK_OVERLAP = 120    # 块间重叠,约 15%
 TOP_K = 5              # 检索返回块数
 RECURSION_LIMIT = 10   # 图递归上限,防无限检索循环
-NUM_CTX = 16384        # Ollama 上下文窗口(默认 4096 多轮带检索块很快截断)
+NUM_CTX = 8192         # Ollama 上下文窗口(4096 多轮易截断;16384 在 8GB 显存会溢出到 CPU)
 HISTORY_KEEP_TURNS = 4 # LLM 视图保留完整消息的最近轮数,更早轮次仅留问答对
