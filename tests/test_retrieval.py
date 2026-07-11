@@ -50,6 +50,15 @@ def test_k_truncation_and_dedup():
     assert len(set(texts)) == len(texts), "融合结果不应有重复文档"
 
 
+def test_take_recorded_accumulates_and_clears():
+    retriever = HybridRetriever(StubVectorStore(list(CORPUS)), CORPUS)
+    retriever.similarity_search("星尘拿铁", k=2)
+    retriever.similarity_search("会员年费", k=2)
+    recorded = retriever.take_recorded()
+    assert len(recorded) == 4, "两轮检索的命中应累计记录"
+    assert retriever.take_recorded() == [], "取走后应清空"
+
+
 def test_both_channels_hit_ranks_first():
     # 双通道都命中的文档经 RRF 融合应排最前
     vector_results = [CORPUS[0], CORPUS[2]]

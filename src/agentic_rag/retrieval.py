@@ -49,6 +49,12 @@ class HybridRetriever:
         self._docs = docs
         self._k_each = k_each
         self._bm25 = BM25Okapi([_tokenize(d.page_content) for d in docs]) if docs else None
+        self._recorded: list[Document] = []
+
+    def take_recorded(self) -> list[Document]:
+        """取走并清空自上次调用以来的全部检索命中(供语义缓存记录来源块)。"""
+        recorded, self._recorded = self._recorded, []
+        return recorded
 
     def _bm25_search(self, query: str, k: int) -> list[Document]:
         if self._bm25 is None:
@@ -76,4 +82,6 @@ class HybridRetriever:
                 prev_score = fused[key][0] if key in fused else 0.0
                 fused[key] = (prev_score + score, doc)
         ranked = sorted(fused.values(), key=lambda pair: pair[0], reverse=True)
-        return [doc for _, doc in ranked[:k]]
+        hits = [doc for _, doc in ranked[:k]]
+        self._recorded.extend(hits)
+        return hits
