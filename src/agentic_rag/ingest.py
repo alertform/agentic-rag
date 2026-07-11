@@ -33,23 +33,36 @@ def split_markdown(text: str, source: str) -> list[Document]:
     return chunks
 
 
-def load_documents(docs_dir: Path) -> list[Document]:
-    """递归加载目录下所有受支持格式的文档(经解析层归一化为 markdown),返回切好的块。
+def load_documents(docs_dir: Path, transcriber=None, captioner=None) -> list[Document]:
+    """递归加载目录下所有受支持格式的文档/媒体,归一化为带 metadata 的文本块。
 
-    块 metadata 按目录 acl.json 打 access 标(无规则默认 public)。
+    - 文档(md/pdf):解析为 markdown 后按标题切块
+    - 音频:需注入 transcriber,按时间窗分段;视频:另需 captioner 做帧描述
+    - 未注入转写/描述器时跳过对应媒体文件
+    - 块 metadata 按目录 acl.json 打 access 标(无规则默认 public)
     """
     from agentic_rag.acl import access_for, load_acl
+    from agentic_rag.media import (
+        SUPPORTED_AUDIO,
+        SUPPORTED_VIDEO,
+        segments_to_documents,
+        video_to_documents,
+    )
     from agentic_rag.parsers import SUPPORTED_EXTENSIONS, parse_file
 
     rules = load_acl(docs_dir)
     chunks: list[Document] = []
-    files = sorted(
-        p for p in docs_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
-    )
-    for file in files:
+    for file in sorted(p for p in docs_dir.rglob("*") if p.is_file()):
+        suffix = file.suffix.lower()
         source = file.relative_to(docs_dir).as_posix()
-        chunks.extend(split_markdown(parse_file(file), source))
+        if suffix in SUPPORTED_EXTENSIONS:
+            chunks.extend(split_markdown(parse_file(file), source))
+        elif suffix in SUPPORTED_AUDIO and transcriber is not None:
+            chunks.extend(segments_to_documents(transcriber(str(file)), source))
+        elif suffix in SUPPORTED_VIDEO and transcriber is not None and captioner is not None:
+            chunks.extend(
+                video_to_documents(str(file), source, transcriber, captioner)
+            )
     for chunk in chunks:
         chunk.metadata["access"] = access_for(chunk.metadata["source"], rules)
     return chunks
@@ -101,6 +114,7 @@ def build_vector_store(chunks: list[Document], rebuild: bool = False):
 
 
 def main() -> None:
+    from agentic_rag.media import SUPPORTED_AUDIO, SUPPORTED_VIDEO
     from agentic_rag.preflight import check_ollama
 
     args = sys.argv[1:]
@@ -109,10 +123,27 @@ def main() -> None:
     docs_dir = Path(positional[0]) if positional else config.SAMPLE_DOCS_DIR
     if not docs_dir.is_dir():
         sys.exit(f"[ingest] 目录不存在: {docs_dir}")
-    check_ollama(require_generation=False)
-    chunks = load_documents(docs_dir)
+
+    suffixes = {p.suffix.lower() for p in docs_dir.rglob("*") if p.is_file()}
+    has_audio = bool(suffixes & SUPPORTED_AUDIO)
+    has_video = bool(suffixes & SUPPORTED_VIDEO)
+    # 视频帧描述走生成模型的 vision 能力,故有视频时也要求生成模型就绪
+    check_ollama(require_generation=has_video)
+
+    transcriber = captioner = None
+    if has_audio or has_video:
+        from agentic_rag.media import make_whisper_transcriber
+
+        print("[ingest] 检测到媒体文件,加载 ASR 模型…", flush=True)
+        transcriber = make_whisper_transcriber()
+    if has_video:
+        from agentic_rag.media import make_ollama_captioner
+
+        captioner = make_ollama_captioner()
+
+    chunks = load_documents(docs_dir, transcriber=transcriber, captioner=captioner)
     if not chunks:
-        sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf)")
+        sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf/wav/mp3/mp4)")
     _, added, removed = build_vector_store(chunks, rebuild=rebuild)
     mode = "全量重建" if rebuild else "增量同步"
     print(

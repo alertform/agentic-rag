@@ -28,27 +28,13 @@ def test_locator_format_with_hours():
     assert docs[0].metadata["headers"] == "01:01:00 - 01:02:00"
 
 
-def _make_video(path, seconds=20, fps=2):
-    import av
-    from PIL import Image
-
-    with av.open(str(path), "w") as container:
-        stream = container.add_stream("mpeg4", rate=fps)
-        stream.width, stream.height = 320, 240
-        stream.pix_fmt = "yuv420p"
-        for i in range(seconds * fps):
-            img = Image.new("RGB", (320, 240), (min(30 + i, 255), 60, 120))
-            for packet in stream.encode(av.VideoFrame.from_image(img)):
-                container.mux(packet)
-        for packet in stream.encode():
-            container.mux(packet)
-
-
 def test_extract_keyframes_interval(tmp_path):
+    from conftest import make_video
+
     from agentic_rag.media import extract_keyframes
 
     video = tmp_path / "clip.mp4"
-    _make_video(video, seconds=20, fps=2)
+    make_video(video, seconds=20, fps=2)
     frames = extract_keyframes(str(video), every_seconds=10)
     assert len(frames) == 2
     assert abs(frames[0][0] - 0.0) < 1.0
@@ -56,11 +42,42 @@ def test_extract_keyframes_interval(tmp_path):
     assert frames[0][1][:8] == b"\x89PNG\r\n\x1a\n", "帧应编码为 PNG"
 
 
+def test_load_documents_routes_media(tmp_path):
+    from conftest import make_video
+
+    from agentic_rag.ingest import load_documents
+
+    (tmp_path / "menu.md").write_text("# 菜单\n\n拿铁 32 元。", encoding="utf-8")
+    (tmp_path / "meeting.wav").write_bytes(b"fake-bytes")  # 假转写器不读内容
+    make_video(tmp_path / "review.mp4", seconds=10, fps=2)
+
+    def fake_transcriber(path):
+        return [Segment(0.0, 3.0, "会议决议内容。")]
+
+    docs = load_documents(
+        tmp_path, transcriber=fake_transcriber, captioner=lambda png: "幻灯片画面"
+    )
+    sources = {d.metadata["source"] for d in docs}
+    assert sources == {"menu.md", "meeting.wav", "review.mp4"}
+    assert all(d.metadata["access"] == "public" for d in docs), "媒体块也应打 access 标"
+
+
+def test_media_skipped_without_transcriber(tmp_path):
+    from agentic_rag.ingest import load_documents
+
+    (tmp_path / "a.md").write_text("# A\n\n内容。", encoding="utf-8")
+    (tmp_path / "meeting.wav").write_bytes(b"fake-bytes")
+    docs = load_documents(tmp_path)
+    assert {d.metadata["source"] for d in docs} == {"a.md"}
+
+
 def test_video_to_documents_merges_audio_and_frames(tmp_path):
+    from conftest import make_video
+
     from agentic_rag.media import video_to_documents
 
     video = tmp_path / "review.mp4"
-    _make_video(video, seconds=20, fps=2)
+    make_video(video, seconds=20, fps=2)
 
     def fake_transcriber(path):
         return [Segment(0.0, 5.0, "这是评审会的开场。")]
