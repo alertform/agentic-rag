@@ -50,6 +50,72 @@ def test_k_truncation_and_dedup():
     assert len(set(texts)) == len(texts), "融合结果不应有重复文档"
 
 
+def test_routing_rare_token_enables_bm25():
+    # "NX-42" 只在一篇文档出现(稀有在库词)→ 应走混合,BM25 独有命中要进结果
+    vector_only = [CORPUS[0], CORPUS[2], CORPUS[3]]  # 向量端不返回 NX-42 那篇
+    retriever = HybridRetriever(StubVectorStore(vector_only), CORPUS)
+    assert retriever.should_use_bm25("NX-42 供应商是哪家?") is True
+    hits = retriever.similarity_search("NX-42 供应商是哪家?", k=4)
+    assert any("NX-42" in d.page_content for d in hits)
+    assert retriever.last_route == "hybrid"
+
+
+def _dense_corpus():
+    # 8 篇文档都含"咖啡豆烘焙"(df=8 > 阈值 3 → 常见);仅 1 篇含 "NX-42"(稀有)
+    docs = [_doc(f"咖啡豆烘焙工艺记录第{i}篇,火候与风味细节各不相同。") for i in range(7)]
+    docs.append(_doc("咖啡豆烘焙供应商 NX-42 的到货记录。"))
+    return docs
+
+
+def test_routing_common_tokens_use_vector_only():
+    corpus = _dense_corpus()
+    expected = corpus[2]
+    retriever = HybridRetriever(StubVectorStore([expected]), corpus)
+    q = "咖啡豆烘焙"  # 全部词元 df=8,超过阈值 max(3, 1) → 不触发 BM25
+    assert retriever.should_use_bm25(q) is False
+    hits = retriever.similarity_search(q, k=4)
+    assert [d.page_content for d in hits] == [expected.page_content], "纯向量路由不应混入 BM25 噪声"
+    assert retriever.last_route == "vector"
+
+
+def test_routing_rare_token_in_dense_corpus_enables_bm25():
+    corpus = _dense_corpus()
+    retriever = HybridRetriever(StubVectorStore([corpus[0]]), corpus)
+    assert retriever.should_use_bm25("NX-42 到货了吗") is True  # NX df=1 ≤ 3
+
+
+def test_routing_unknown_token_does_not_trigger():
+    retriever = HybridRetriever(StubVectorStore(list(CORPUS)), CORPUS)
+    # 词元完全不在语料(df=0)→ BM25 无能为力,不触发
+    assert retriever.should_use_bm25("ZZZZ-9999") is False
+
+
+def test_bm25_index_carries_df_stats():
+    from agentic_rag.retrieval import build_bm25_index
+
+    index = build_bm25_index(CORPUS)
+    assert index.doc_count == len(CORPUS)
+    assert index.df.get("NX") == 1, "NX 只出现在一篇文档"
+    # 同一文档内重复词元只计一次 df
+    assert all(v <= len(CORPUS) for v in index.df.values())
+
+
+def test_old_pickle_without_df_treated_stale(tmp_path):
+    import pickle
+
+    from agentic_rag.retrieval import BM25Index, build_bm25_index, load_bm25_index
+
+    index = build_bm25_index(CORPUS)
+    legacy = BM25Index.__new__(BM25Index)  # 模拟旧版对象:无 df 字段
+    legacy.docs = index.docs
+    legacy.bm25 = index.bm25
+    legacy.digest = index.digest
+    path = tmp_path / "legacy.pkl"
+    with open(path, "wb") as f:
+        pickle.dump(legacy, f)
+    assert load_bm25_index(path, expected_digest=index.digest) is None
+
+
 def test_bm25_index_roundtrip_and_digest(tmp_path):
     from agentic_rag.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
 
