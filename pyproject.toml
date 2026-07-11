@@ -12,6 +12,9 @@ dependencies = [
     "pymupdf4llm>=1.28.0",
     "rank-bm25>=0.2.2",
     "jieba>=0.42.1",
+    "faster-whisper>=1.2.1",
+    "av>=18.0.0",
+    "pillow>=12.3.0",
 ]
 
 [dependency-groups]

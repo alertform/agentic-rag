@@ -1,0 +1,142 @@
+"""媒体归一化管道:音频 ASR 转写、视频关键帧 VLM 描述 → 带时间戳 locator 的文本块。
+
+设计:媒体的"位置"是时间轴而非标题路径,复用 metadata 的 headers 字段作 locator
+(如 "00:01:00 - 00:02:00"),来源标注与引用汇总零改动直接生效。
+文本是索引,原始媒体是档案:locator 指回原始文件的具体时刻。
+"""
+from typing import Callable, NamedTuple
+
+from langchain_core.documents import Document
+
+SUPPORTED_AUDIO = {".wav", ".mp3", ".m4a"}
+SUPPORTED_VIDEO = {".mp4", ".mov"}
+
+
+class Segment(NamedTuple):
+    start: float
+    end: float
+    text: str
+
+
+Transcriber = Callable[[str], list[Segment]]
+Captioner = Callable[[bytes], str]
+
+
+def _format_ts(seconds: float) -> str:
+    total = int(seconds)
+    return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+
+
+def segments_to_documents(
+    segments: list[Segment], source: str, window_seconds: int = 60
+) -> list[Document]:
+    """按时间窗聚合转写分段;跨窗长段归属其起始窗口。"""
+    windows: dict[int, list[str]] = {}
+    for seg in segments:
+        if seg.text.strip():
+            windows.setdefault(int(seg.start // window_seconds), []).append(seg.text.strip())
+    docs = []
+    for idx in sorted(windows):
+        locator = (
+            f"{_format_ts(idx * window_seconds)} - {_format_ts((idx + 1) * window_seconds)}"
+        )
+        docs.append(
+            Document(
+                page_content=" ".join(windows[idx]),
+                metadata={"source": source, "headers": locator},
+            )
+        )
+    return docs
+
+
+def extract_keyframes(path: str, every_seconds: int = 10) -> list[tuple[float, bytes]]:
+    """按固定时间间隔抽取视频帧,返回 (时间戳秒, PNG bytes) 列表。"""
+    import io
+
+    import av
+
+    frames: list[tuple[float, bytes]] = []
+    with av.open(path) as container:
+        stream = container.streams.video[0]
+        next_ts = 0.0
+        for frame in container.decode(stream):
+            ts = float(frame.time or 0.0)
+            if ts + 1e-6 >= next_ts:
+                buf = io.BytesIO()
+                frame.to_image().save(buf, format="PNG")
+                frames.append((ts, buf.getvalue()))
+                next_ts += every_seconds
+    return frames
+
+
+def make_ollama_captioner() -> Captioner:
+    """VLM 帧描述:走本地 Ollama 的 vision 能力(生成模型即 qwen3.5,零额外模型)。"""
+    import base64
+    import json
+    import urllib.request
+
+    from agentic_rag import config
+
+    def caption(image_png: bytes) -> str:
+        payload = {
+            "model": config.GENERATION_MODEL,
+            "stream": False,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "用一两句话描述这帧画面;若画面含文字,请原样转录全部文字。",
+                    "images": [base64.b64encode(image_png).decode()],
+                }
+            ],
+        }
+        req = urllib.request.Request(
+            f"{config.OLLAMA_BASE_URL}/api/chat",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.load(resp)
+        return data["message"]["content"].strip()
+
+    return caption
+
+
+def video_to_documents(
+    path: str,
+    source: str,
+    transcriber: Transcriber,
+    captioner: Captioner,
+    window_seconds: int = 60,
+    frame_interval: int = 10,
+) -> list[Document]:
+    """视频归一化:音轨转写 + 关键帧描述,统一带时间轴 locator。"""
+    try:
+        docs = segments_to_documents(transcriber(str(path)), source, window_seconds)
+    except Exception:  # 无音轨等情况:画面描述仍有价值,不让音轨失败拖垮整个文件
+        docs = []
+    for ts, png in extract_keyframes(str(path), frame_interval):
+        text = captioner(png).strip()
+        if text:
+            docs.append(
+                Document(
+                    page_content=text,
+                    metadata={"source": source, "headers": f"画面 {_format_ts(ts)}"},
+                )
+            )
+    return docs
+
+
+def make_whisper_transcriber(model_size: str = "small") -> Transcriber:
+    """懒加载 faster-whisper;模型经 HF_ENDPOINT 镜像下载(默认 hf-mirror)。"""
+    import os
+
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(model_size, device="auto", compute_type="int8")
+
+    def transcribe(path: str) -> list[Segment]:
+        raw_segments, _info = model.transcribe(path, language="zh")
+        return [Segment(s.start, s.end, s.text) for s in raw_segments]
+
+    return transcribe
