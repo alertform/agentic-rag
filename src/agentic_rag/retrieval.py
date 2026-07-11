@@ -23,6 +23,62 @@ def load_all_chunks(vector_store) -> list[Document]:
     ]
 
 
+class BM25Index:
+    """预构建的 BM25 索引:分词与建索引在 ingest 时一次完成,启动时直接加载。
+
+    数万块语料下,每次 chat 启动全量 jieba 分词重建要分钟级——持久化后秒开。
+    digest 是排序后块内容集合的 sha256,用于校验索引与向量库是否同步。
+    """
+
+    def __init__(self, docs: list[Document], bm25, digest: str):
+        self.docs = docs
+        self.bm25 = bm25
+        self.digest = digest
+
+
+def corpus_digest(docs: list[Document]) -> str:
+    """排序后块内容集合的摘要,用于校验 BM25 持久化索引与向量库同步。"""
+    import hashlib
+
+    hasher = hashlib.sha256()
+    for content in sorted(d.page_content for d in docs):
+        hasher.update(content.encode("utf-8"))
+    return hasher.hexdigest()[:32]
+
+
+def build_bm25_index(docs: list[Document]) -> BM25Index:
+    from rank_bm25 import BM25Okapi
+
+    bm25 = BM25Okapi([_tokenize(d.page_content) for d in docs]) if docs else None
+    return BM25Index(docs, bm25, corpus_digest(docs))
+
+
+def save_bm25_index(index: BM25Index, path) -> None:
+    import pickle
+    from pathlib import Path
+
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "wb") as f:
+        pickle.dump(index, f)
+
+
+def load_bm25_index(path, expected_digest: str) -> BM25Index | None:
+    """加载持久化索引;文件缺失或摘要与向量库不同步时返回 None(调用方重建)。"""
+    import pickle
+    from pathlib import Path
+
+    if not Path(path).is_file():
+        return None
+    try:
+        with open(path, "rb") as f:
+            index = pickle.load(f)
+    except Exception:
+        return None
+    if index.digest != expected_digest:
+        return None
+    return index
+
+
 class HybridRetriever:
     """鸭子类型兼容向量库接口(similarity_search),内部做 BM25+向量 RRF 融合。
 
@@ -36,19 +92,31 @@ class HybridRetriever:
         docs: list[Document],
         k_each: int = 20,
         allowed_access: set[str] | None = None,
+        prebuilt: "BM25Index | None" = None,
     ):
         from rank_bm25 import BM25Okapi
 
         self._vector_store = vector_store
         self._allowed = allowed_access
+        if prebuilt is not None:
+            docs = prebuilt.docs
         if allowed_access is not None:
-            docs = [
+            filtered = [
                 d for d in docs
                 if d.metadata.get("access", "public") in allowed_access
             ]
-        self._docs = docs
+        else:
+            filtered = docs
+        if prebuilt is not None and len(filtered) == len(prebuilt.docs):
+            # 过滤未剔除任何块(如 manager 全可见)→ 直接复用持久化索引
+            self._docs, self._bm25 = prebuilt.docs, prebuilt.bm25
+        else:
+            # 受限角色需在可见子集上重建(数万块 + 受限角色场景可再做每角色索引)
+            self._docs = filtered
+            self._bm25 = (
+                BM25Okapi([_tokenize(d.page_content) for d in filtered]) if filtered else None
+            )
         self._k_each = k_each
-        self._bm25 = BM25Okapi([_tokenize(d.page_content) for d in docs]) if docs else None
         self._recorded: list[Document] = []
 
     def take_recorded(self) -> list[Document]:

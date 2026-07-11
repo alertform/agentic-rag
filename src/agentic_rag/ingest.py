@@ -95,20 +95,29 @@ def chunk_id(doc: Document) -> str:
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
-def sync_vector_store(store, chunks: list[Document]) -> tuple[int, int]:
-    """增量对账:只嵌入新增/变更的块,删除库里已消失的块;返回 (新增数, 删除数)。"""
+def sync_vector_store(store, chunks: list[Document], batch_size: int | None = None) -> tuple[int, int]:
+    """增量对账:只嵌入新增/变更的块,删除库里已消失的块;返回 (新增数, 删除数)。
+
+    新增块按 batch_size 分批嵌入写库(数万块场景避免单次超大请求,并输出进度)。
+    """
+    size = batch_size or config.EMBED_BATCH
     desired = {chunk_id(c): c for c in chunks}
     existing = set(store.get()["ids"])
     new_ids = [i for i in desired if i not in existing]
     stale_ids = [i for i in existing if i not in desired]
-    if new_ids:
-        store.add_documents([desired[i] for i in new_ids], ids=new_ids)
+    for offset in range(0, len(new_ids), size):
+        batch = new_ids[offset : offset + size]
+        store.add_documents([desired[i] for i in batch], ids=batch)
+        if len(new_ids) > size:
+            print(f"[ingest] 嵌入进度: {min(offset + size, len(new_ids))}/{len(new_ids)}", flush=True)
     if stale_ids:
         store.delete(ids=stale_ids)
     return len(new_ids), len(stale_ids)
 
 
-def build_vector_store(chunks: list[Document], rebuild: bool = False):
+def build_vector_store(
+    chunks: list[Document], rebuild: bool = False, collection_name: str | None = None
+):
     """打开本地 Chroma 并同步块:默认增量;rebuild=True 时清空全量重建。"""
     from langchain_chroma import Chroma
     from langchain_ollama import OllamaEmbeddings
@@ -117,7 +126,7 @@ def build_vector_store(chunks: list[Document], rebuild: bool = False):
         model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
     )
     store = Chroma(
-        collection_name=config.COLLECTION_NAME,
+        collection_name=collection_name or config.COLLECTION_NAME,
         embedding_function=embeddings,
         persist_directory=str(config.CHROMA_DIR),
     )
@@ -128,13 +137,18 @@ def build_vector_store(chunks: list[Document], rebuild: bool = False):
 
 
 def main() -> None:
+    import argparse
+    import time
+
     from agentic_rag.media import SUPPORTED_AUDIO, SUPPORTED_VIDEO
     from agentic_rag.preflight import check_ollama
 
-    args = sys.argv[1:]
-    rebuild = "--rebuild" in args
-    positional = [a for a in args if not a.startswith("--")]
-    docs_dir = Path(positional[0]) if positional else config.SAMPLE_DOCS_DIR
+    parser = argparse.ArgumentParser(description="文档/媒体索引管道")
+    parser.add_argument("docs_dir", nargs="?", default=str(config.SAMPLE_DOCS_DIR))
+    parser.add_argument("--rebuild", action="store_true", help="清空后全量重建")
+    parser.add_argument("--collection", default=config.COLLECTION_NAME)
+    args = parser.parse_args()
+    docs_dir = Path(args.docs_dir)
     if not docs_dir.is_dir():
         sys.exit(f"[ingest] 目录不存在: {docs_dir}")
 
@@ -155,18 +169,37 @@ def main() -> None:
 
         captioner = make_ollama_captioner()
 
+    t0 = time.perf_counter()
     chunks = load_documents(docs_dir, transcriber=transcriber, captioner=captioner)
+    t_load = time.perf_counter() - t0
     if not chunks:
         sys.exit(f"[ingest] {docs_dir} 下没有受支持格式的文档 (md/pdf/wav/mp3/mp4)")
-    store, added, removed = build_vector_store(chunks, rebuild=rebuild)
-    mode = "全量重建" if rebuild else "增量同步"
-    print(
-        f"[ingest] {mode}完成: 共 {len(chunks)} 块 (新增 {added}, 删除 {removed}) ← {docs_dir}"
+    t0 = time.perf_counter()
+    store, added, removed = build_vector_store(
+        chunks, rebuild=args.rebuild, collection_name=args.collection
     )
+    t_embed = time.perf_counter() - t0
+    mode = "全量重建" if args.rebuild else "增量同步"
+    print(f"[ingest] {mode}完成: 共 {len(chunks)} 块 (新增 {added}, 删除 {removed}) ← {docs_dir}")
+    if added:
+        rate = added / max(t_embed, 0.001)
+        print(f"[ingest] 耗时: 解析切块 {t_load:.1f}s, 嵌入写库 {t_embed:.1f}s ({rate:.1f} 块/s)")
+
+    # BM25 索引持久化:分词建索引一次完成,chat/evals 秒开
+    from agentic_rag.retrieval import build_bm25_index, save_bm25_index
+
+    t0 = time.perf_counter()
+    index = build_bm25_index(chunks)
+    save_bm25_index(index, config.CHROMA_DIR / f"bm25_{args.collection}.pkl")
+    print(f"[ingest] BM25 索引已持久化 ({time.perf_counter() - t0:.1f}s)")
 
     # 语料一变就跑一次检索评估(仅默认语料目录且 golden set 存在;失败不阻塞 ingest)
     golden_path = config.PROJECT_ROOT / "sample_evals.jsonl"
-    if docs_dir.resolve() == config.SAMPLE_DOCS_DIR.resolve() and golden_path.is_file():
+    if (
+        docs_dir.resolve() == config.SAMPLE_DOCS_DIR.resolve()
+        and args.collection == config.COLLECTION_NAME
+        and golden_path.is_file()
+    ):
         from agentic_rag.evals import run_evals
 
         try:

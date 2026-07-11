@@ -50,6 +50,34 @@ def test_k_truncation_and_dedup():
     assert len(set(texts)) == len(texts), "融合结果不应有重复文档"
 
 
+def test_bm25_index_roundtrip_and_digest(tmp_path):
+    from agentic_rag.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
+
+    index = build_bm25_index(CORPUS)
+    path = tmp_path / "bm25.pkl"
+    save_bm25_index(index, path)
+
+    loaded = load_bm25_index(path, expected_digest=index.digest)
+    assert loaded is not None
+    # 持久化索引与现场构建的检索结果一致
+    r1 = HybridRetriever(StubVectorStore([]), CORPUS)
+    r2 = HybridRetriever(StubVectorStore([]), [], prebuilt=loaded)
+    q = "NX-42 供应商"
+    assert [d.page_content for d in r1.similarity_search(q, k=3)] == [
+        d.page_content for d in r2.similarity_search(q, k=3)
+    ]
+
+
+def test_bm25_index_stale_digest_returns_none(tmp_path):
+    from agentic_rag.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
+
+    index = build_bm25_index(CORPUS)
+    path = tmp_path / "bm25.pkl"
+    save_bm25_index(index, path)
+    assert load_bm25_index(path, expected_digest="不匹配的摘要") is None
+    assert load_bm25_index(tmp_path / "不存在.pkl", expected_digest=index.digest) is None
+
+
 def test_take_recorded_accumulates_and_clears():
     retriever = HybridRetriever(StubVectorStore(list(CORPUS)), CORPUS)
     retriever.similarity_search("星尘拿铁", k=2)

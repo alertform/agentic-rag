@@ -10,7 +10,13 @@ from agentic_rag import config, preflight
 from agentic_rag.cache import SemanticCache
 from agentic_rag.graph import build_graph
 from agentic_rag.ingest import chunk_id
-from agentic_rag.retrieval import HybridRetriever, load_all_chunks
+from agentic_rag.retrieval import (
+    HybridRetriever,
+    build_bm25_index,
+    corpus_digest,
+    load_all_chunks,
+    load_bm25_index,
+)
 from agentic_rag.tools import make_retrieve_tool
 
 _SOURCE_RE = re.compile(r"\[来源: ([^|\]]+?) \|")
@@ -26,6 +32,7 @@ def main() -> None:
         choices=sorted(config.ROLE_ACCESS),
         help="提问者角色,决定检索可见范围 (默认 manager 全可见)",
     )
+    parser.add_argument("--collection", default=config.COLLECTION_NAME)
     cli_args = parser.parse_args()
     allowed_access = config.ROLE_ACCESS[cli_args.role]
 
@@ -36,12 +43,18 @@ def main() -> None:
         model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
     )
     store = Chroma(
-        collection_name=config.COLLECTION_NAME,
+        collection_name=cli_args.collection,
         embedding_function=embeddings,
         persist_directory=str(config.CHROMA_DIR),
     )
+    chunks = load_all_chunks(store)
+    index_path = config.CHROMA_DIR / f"bm25_{cli_args.collection}.pkl"
+    prebuilt = load_bm25_index(index_path, corpus_digest(chunks))
+    if prebuilt is None:
+        print("[chat] BM25 持久化索引缺失或过期,现场重建…", flush=True)
+        prebuilt = build_bm25_index(chunks)
     retriever = HybridRetriever(
-        store, load_all_chunks(store), allowed_access=allowed_access
+        store, chunks, allowed_access=allowed_access, prebuilt=prebuilt
     )
     retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=True)
     qa_cache = SemanticCache(embeddings, persist_directory=str(config.CHROMA_DIR))

@@ -62,6 +62,30 @@ def test_changed_file_replaces_old_chunks(tmp_path):
     assert not any("32 元" in t for t in texts), "旧版本块应被清除"
 
 
+def test_sync_batches_large_additions(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    for i in range(7):
+        (docs / f"d{i}.md").write_text(f"# 文档{i}\n\n内容{i}。", encoding="utf-8")
+
+    class RecordingStore:
+        def __init__(self):
+            self.batches = []
+
+        def get(self):
+            return {"ids": []}
+
+        def add_documents(self, chunks, ids):
+            self.batches.append(len(ids))
+
+        def delete(self, ids):
+            pass
+
+    store = RecordingStore()
+    ingest.sync_vector_store(store, ingest.load_documents(docs), batch_size=3)
+    assert store.batches == [3, 3, 1], "7 个新块按批大小 3 应分为 3+3+1"
+
+
 def test_deleted_file_chunks_removed(tmp_path):
     docs = tmp_path / "docs"
     _write_corpus(docs)
