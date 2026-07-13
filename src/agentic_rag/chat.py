@@ -1,8 +1,6 @@
 """CLI 交互问答:流式输出 + 检索过程展示 + 来源汇总 + 语义缓存。"""
-import re
-
 from langchain_chroma import Chroma
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
 from agentic_rag import config, preflight
@@ -18,8 +16,6 @@ from agentic_rag.retrieval import (
     load_bm25_index,
 )
 from agentic_rag.tools import make_retrieve_tool
-
-_SOURCE_RE = re.compile(r"\[来源: ([^|\]]+?) \|")
 
 
 def main() -> None:
@@ -91,15 +87,12 @@ def main() -> None:
             continue
 
         retriever.take_recorded()  # 清空上一轮残留
-        sources: set[str] = set()
         answer_parts: list[str] = []
         print("助手: ", end="", flush=True)
         for chunk, meta in app.stream(
             {"messages": [HumanMessage(question)]}, run_config, stream_mode="messages"
         ):
-            if isinstance(chunk, ToolMessage):
-                sources |= set(_SOURCE_RE.findall(str(chunk.content)))
-            elif (
+            if (
                 isinstance(chunk, AIMessageChunk)
                 and meta.get("langgraph_node") == "agent"
                 and chunk.content
@@ -107,16 +100,20 @@ def main() -> None:
                 print(chunk.content, end="", flush=True)
                 answer_parts.append(str(chunk.content))
         print()
-        if sources:
-            print(f"—— 本轮引用: {', '.join(sorted(sources))}")
 
+        # 来源取自检索命中的结构化 metadata,而非正则反解工具输出文本——
+        # 后者脆弱(格式契约),且语料正文写入字面量 "[来源: 伪造.md |" 即可伪造引用
         recorded = retriever.take_recorded()
+        sources = sorted({d.metadata["source"] for d in recorded})
+        if sources:
+            print(f"—— 本轮引用: {', '.join(sources)}")
+
         answer_text = "".join(answer_parts).strip()
         if recorded and answer_text:
             qa_cache.store(
                 question=question,
                 answer=answer_text,
-                sources=sorted(sources),
+                sources=sources,
                 chunk_ids=[chunk_id(d) for d in recorded],
                 access_levels=[d.metadata.get("access", "public") for d in recorded],
             )
