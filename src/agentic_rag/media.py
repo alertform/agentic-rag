@@ -109,11 +109,12 @@ def video_to_documents(
     window_seconds: int = 60,
     frame_interval: int = 10,
 ) -> list[Document]:
-    """视频归一化:音轨转写 + 关键帧描述,统一带时间轴 locator。"""
-    try:
-        docs = segments_to_documents(transcriber(str(path)), source, window_seconds)
-    except Exception:  # 无音轨等情况:画面描述仍有价值,不让音轨失败拖垮整个文件
-        docs = []
+    """视频归一化:音轨转写 + 关键帧描述,统一带时间轴 locator。
+
+    音轨转写失败直接向上抛(由 ingest 侧决定跳过该文件而非缓存残缺结果)——
+    避免"只剩画面"的半吊子索引被媒体缓存永久固化、不可自愈。
+    """
+    docs = segments_to_documents(transcriber(str(path)), source, window_seconds)
     for ts, png in extract_keyframes(str(path), frame_interval):
         text = captioner(png).strip()
         if text:

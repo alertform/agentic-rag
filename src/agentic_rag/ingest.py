@@ -57,6 +57,19 @@ def load_documents(
     if media_cache_dir is None:
         media_cache_dir = config.MEDIA_CACHE_DIR
     rules = load_acl(docs_dir)
+
+    def _ingest_media(file, source, builder) -> list[Document]:
+        """媒体单文件容错:转写/解析失败则警告+跳过,不缓存残缺结果、不拖垮整体。
+
+        故障时 builder 抛异常 → cached_media_documents 的写缓存不执行 → 环境
+        修复后重跑自动重试(可自愈)。
+        """
+        try:
+            return cached_media_documents(file, source, media_cache_dir, builder)
+        except Exception as exc:
+            print(f"[ingest] 跳过媒体 {source}(转写失败,未缓存,修复后重跑生效): {exc}", flush=True)
+            return []
+
     chunks: list[Document] = []
     for file in sorted(p for p in docs_dir.rglob("*") if p.is_file()):
         suffix = file.suffix.lower()
@@ -64,19 +77,15 @@ def load_documents(
         if suffix in SUPPORTED_EXTENSIONS:
             chunks.extend(split_markdown(parse_file(file), source))
         elif suffix in SUPPORTED_AUDIO and transcriber is not None:
-            chunks.extend(
-                cached_media_documents(
-                    file, source, media_cache_dir,
-                    lambda f=file, s=source: segments_to_documents(transcriber(str(f)), s),
-                )
-            )
+            chunks.extend(_ingest_media(
+                file, source,
+                lambda f=file, s=source: segments_to_documents(transcriber(str(f)), s),
+            ))
         elif suffix in SUPPORTED_VIDEO and transcriber is not None and captioner is not None:
-            chunks.extend(
-                cached_media_documents(
-                    file, source, media_cache_dir,
-                    lambda f=file, s=source: video_to_documents(str(f), s, transcriber, captioner),
-                )
-            )
+            chunks.extend(_ingest_media(
+                file, source,
+                lambda f=file, s=source: video_to_documents(str(f), s, transcriber, captioner),
+            ))
     for chunk in chunks:
         chunk.metadata["access"] = access_for(chunk.metadata["source"], rules)
     return chunks
@@ -109,15 +118,16 @@ def sync_vector_store(store, chunks: list[Document], batch_size: int | None = No
     stale_ids = [i for i in existing if i not in desired]
     for offset in range(0, len(new_ids), size):
         batch = new_ids[offset : offset + size]
-        for attempt in range(3):  # 嵌入服务偶发崩溃会自动重启,重试即恢复
+        for attempt in range(4):  # 嵌入 runner 偶发崩溃,退避重试给服务重拉时间
             try:
                 store.add_documents([desired[i] for i in batch], ids=batch)
                 break
             except Exception as exc:
-                if attempt == 2:
+                if attempt == 3:
                     raise
-                print(f"[ingest] 批次失败重试 {attempt + 1}/2: {exc}", flush=True)
-                time.sleep(5)
+                wait = 10 * (attempt + 1)
+                print(f"[ingest] 批次失败,{wait}s 后重试 {attempt + 1}/3: {exc}", flush=True)
+                time.sleep(wait)
         if len(new_ids) > size:
             print(f"[ingest] 嵌入进度: {min(offset + size, len(new_ids))}/{len(new_ids)}", flush=True)
     if stale_ids:

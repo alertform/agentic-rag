@@ -85,6 +85,50 @@ def test_media_parse_cache_avoids_reprocessing(tmp_path):
     assert calls["n"] == 2
 
 
+def test_transcribe_failure_skips_file_not_cached_and_recoverable(tmp_path):
+    from agentic_rag.ingest import load_documents
+
+    (tmp_path / "menu.md").write_text("# 菜单\n\n拿铁 32 元。", encoding="utf-8")
+    (tmp_path / "meeting.wav").write_bytes(b"audio-bytes")
+    cache_dir = tmp_path / ".cache"
+
+    calls = {"n": 0}
+
+    def flaky_transcriber(path):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("ASR 进程崩溃")  # 首次瞬时故障
+        return [Segment(0.0, 3.0, "会议决议内容。")]
+
+    # 首次:转写故障 → 跳过 wav、只索引 md,不拖垮整体
+    docs1 = load_documents(tmp_path, transcriber=flaky_transcriber, media_cache_dir=cache_dir)
+    assert {d.metadata["source"] for d in docs1} == {"menu.md"}
+    # 关键:故障结果不得写入缓存,否则不可自愈
+    assert list(cache_dir.glob("*.json")) == [], "转写失败的结果不应被缓存"
+
+    # 环境修复后重跑 → wav 成功入库(证明未被坏缓存钉死)
+    docs2 = load_documents(tmp_path, transcriber=flaky_transcriber, media_cache_dir=cache_dir)
+    assert "meeting.wav" in {d.metadata["source"] for d in docs2}
+
+
+def test_video_to_documents_propagates_transcribe_error(tmp_path):
+    import pytest
+    from conftest import make_video
+
+    from agentic_rag.media import video_to_documents
+
+    make_video(tmp_path / "v.mp4", seconds=6, fps=2)
+
+    def bad_transcriber(path):
+        raise RuntimeError("ASR 崩溃")
+
+    # 转写故障必须向上抛(由 ingest 侧决定跳过+不缓存),不得静默降级为"仅画面"
+    with pytest.raises(RuntimeError):
+        video_to_documents(
+            str(tmp_path / "v.mp4"), "v.mp4", bad_transcriber, lambda png: "画面"
+        )
+
+
 def test_media_skipped_without_transcriber(tmp_path):
     from agentic_rag.ingest import load_documents
 
