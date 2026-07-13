@@ -1,9 +1,19 @@
 """集中配置:模型、路径、切块与检索参数。"""
+import os
 from pathlib import Path
 
-OLLAMA_BASE_URL = "http://localhost:11434"
-GENERATION_MODEL = "qwen3.5:9b"
-EMBEDDING_MODEL = "bge-m3"
+# 推理后端:ollama(默认)| vllm。经 AGENTIC_RAG_BACKEND 环境变量切换,无需改代码。
+# 所有 LLM/嵌入客户端统一经 agentic_rag.llm 工厂构造,是 Ollama ↔ vLLM 的唯一切换点。
+BACKEND = os.environ.get("AGENTIC_RAG_BACKEND", "ollama")
+
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+GENERATION_MODEL = os.environ.get("GENERATION_MODEL", "qwen3.5:9b")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "bge-m3")
+
+# vLLM 后端(BACKEND=vllm 时生效):OpenAI 兼容端点。生成与嵌入需各自独立的 vLLM 实例。
+VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
+VLLM_EMBED_BASE_URL = os.environ.get("VLLM_EMBED_BASE_URL", "http://localhost:8001/v1")
+VLLM_API_KEY = os.environ.get("VLLM_API_KEY", "EMPTY")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SAMPLE_DOCS_DIR = PROJECT_ROOT / "sample_docs"

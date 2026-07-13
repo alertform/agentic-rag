@@ -101,8 +101,8 @@ def main() -> None:
     import argparse
 
     from langchain_chroma import Chroma
-    from langchain_ollama import OllamaEmbeddings
 
+    from agentic_rag.llm import make_embeddings
     from agentic_rag.preflight import check_ollama
     from agentic_rag.retrieval import build_bm25_index, corpus_digest, load_all_chunks, load_bm25_index
 
@@ -112,10 +112,9 @@ def main() -> None:
     parser.add_argument("--timing", action="store_true", help="输出每模式查询延迟 p50/p95")
     args = parser.parse_args()
 
-    check_ollama(require_generation=False)
-    embeddings = OllamaEmbeddings(
-        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
-    )
+    if config.BACKEND == "ollama":
+        check_ollama(require_generation=False)
+    embeddings = make_embeddings()
     store = Chroma(
         collection_name=args.collection,
         embedding_function=embeddings,

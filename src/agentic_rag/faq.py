@@ -37,11 +37,9 @@ def export_candidates(cache: SemanticCache, min_hits: int = 2) -> str:
 
 
 def main() -> None:
-    from langchain_ollama import OllamaEmbeddings
+    from agentic_rag.llm import make_embeddings
 
-    embeddings = OllamaEmbeddings(
-        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
-    )
+    embeddings = make_embeddings()
     cache = SemanticCache(embeddings, persist_directory=str(config.CHROMA_DIR))
     out = config.PROJECT_ROOT / "faq_candidates.md"
     content = export_candidates(cache)

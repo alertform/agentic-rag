@@ -3,12 +3,12 @@ import re
 
 from langchain_chroma import Chroma
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
-from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langgraph.checkpoint.memory import MemorySaver
 
 from agentic_rag import config, preflight
 from agentic_rag.cache import SemanticCache
 from agentic_rag.graph import build_graph
+from agentic_rag.llm import make_chat_llm, make_embeddings
 from agentic_rag.ingest import chunk_id
 from agentic_rag.retrieval import (
     HybridRetriever,
@@ -36,12 +36,11 @@ def main() -> None:
     cli_args = parser.parse_args()
     allowed_access = config.ROLE_ACCESS[cli_args.role]
 
-    preflight.check_ollama()
+    if config.BACKEND == "ollama":
+        preflight.check_ollama()
     preflight.check_vector_store()
 
-    embeddings = OllamaEmbeddings(
-        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
-    )
+    embeddings = make_embeddings()
     store = Chroma(
         collection_name=cli_args.collection,
         embedding_function=embeddings,
@@ -59,13 +58,7 @@ def main() -> None:
     retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=True)
     qa_cache = SemanticCache(embeddings, persist_directory=str(config.CHROMA_DIR))
     live_chunk_ids = set(store.get()["ids"])
-    # reasoning=False 关闭 qwen3 思考段;若所装 langchain-ollama 不支持该参数,删掉即可
-    llm = ChatOllama(
-        model=config.GENERATION_MODEL,
-        base_url=config.OLLAMA_BASE_URL,
-        reasoning=False,
-        num_ctx=config.NUM_CTX,
-    )
+    llm = make_chat_llm()
     app = build_graph(llm.bind_tools([retrieve]), [retrieve], checkpointer=MemorySaver())
     run_config = {
         "configurable": {"thread_id": "cli"},

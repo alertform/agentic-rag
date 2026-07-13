@@ -17,6 +17,11 @@ dependencies = [
     "pillow>=12.3.0",
 ]
 
+[project.optional-dependencies]
+# vLLM 后端(BACKEND=vllm):OpenAI 兼容客户端。装了才需要,平时不拉。
+# uv sync --extra vllm  或  uv pip install -e ".[vllm]"
+vllm = ["langchain-openai>=0.2"]
+
 [dependency-groups]
 dev = ["pytest>=8.0"]
 

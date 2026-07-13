@@ -130,11 +130,10 @@ def build_vector_store(
 ):
     """打开本地 Chroma 并同步块:默认增量;rebuild=True 时清空全量重建。"""
     from langchain_chroma import Chroma
-    from langchain_ollama import OllamaEmbeddings
 
-    embeddings = OllamaEmbeddings(
-        model=config.EMBEDDING_MODEL, base_url=config.OLLAMA_BASE_URL
-    )
+    from agentic_rag.llm import make_embeddings
+
+    embeddings = make_embeddings()
     store = Chroma(
         collection_name=collection_name or config.COLLECTION_NAME,
         embedding_function=embeddings,

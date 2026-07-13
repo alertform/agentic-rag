@@ -35,6 +35,7 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 - `parsers`:类型路由把多格式文档归一化为 markdown(文本是索引,原始文件是档案)
 - `media`:音频 ASR 时间窗分段、视频关键帧 + VLM 描述——时间轴 locator 复用 headers 字段,引用格式零改动
 - `acl`:acl.json glob 规则给块打 access 标,检索按角色可见范围过滤
+- `llm`:后端工厂(`make_chat_llm` / `make_embeddings`),生成/嵌入客户端的唯一构造点;下游只依赖 LangChain 抽象(`BaseChatModel` / `Embeddings`),`AGENTIC_RAG_BACKEND` 环境变量一键切换 Ollama ↔ vLLM
 - `ingest`:解析/转写 → 切块 → bge-m3 向量化 → Chroma 增量同步
 - `retrieval`:jieba 分词 BM25 + 向量检索,RRF 融合(编号/专名词面命中兜底向量盲区)+ ACL 双通道过滤
 - `graph`:手写 LangGraph StateGraph,agent 节点(qwen3.5:9b)⇄ ToolNode 循环,模型自主决定检索时机与 query
@@ -42,6 +43,51 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 - `faq`:`python -m agentic_rag.faq` 导出高频问答候选 → 人工审核 → 放入 `sample_docs/faq.md` 重跑 ingest 入库(切块/哈希/ACL 全复用)——这是"模型内容不得无审核入库"边界的合规出口
 - `evals`:golden set 检索评估,`uv run python -m agentic_rag.evals` 输出纯向量 vs 混合的 hit@k / MRR;**每次 ingest 默认语料目录后自动跑一次**
 - `chat`:CLI 流式问答,实时展示检索过程,回答后汇总引用来源;缓存命中显示 ⚡ 并秒回;对话历史在 LLM 视图层裁剪(最近 `HISTORY_KEEP_TURNS` 轮完整,更早轮次仅留问答对),`num_ctx` 提升至 16K
+
+## 推理后端(可切换:Ollama / vLLM)
+
+所有 LLM 与嵌入客户端统一经 `agentic_rag.llm` 工厂构造,下游只依赖 LangChain 抽象类型。切换后端是**改一个环境变量**,不动业务代码:
+
+```bash
+export AGENTIC_RAG_BACKEND=vllm   # 默认 ollama
+```
+
+默认 Ollama 单进程同时服务生成 + 嵌入,零配置、低显存友好(可溢出到 CPU),适合单机 demo。切到 vLLM 面向**高并发吞吐**(PagedAttention + continuous batching)——但其价值只在并发负载下兑现,单用户场景 vLLM ≈ Ollama。
+
+### 切到 vLLM 的步骤
+
+1. 装可选依赖:`uv sync --extra vllm`(拉 `langchain-openai`)
+2. 起两个 vLLM 实例(vLLM 一个服务只服务一个模型):
+
+   ```bash
+   # 生成:后两个 flag 是承重点,整个 agent 图靠模型自主发 tool_call
+   vllm serve Qwen2.5-7B-Instruct-AWQ \
+     --port 8000 --max-model-len 8192 \
+     --enable-auto-tool-choice --tool-call-parser hermes
+   vllm serve BAAI/bge-m3 --port 8001 --task embed          # 嵌入:独立实例
+   ```
+
+3. 指端点并切后端:
+
+   ```bash
+   export AGENTIC_RAG_BACKEND=vllm
+   export VLLM_BASE_URL=http://localhost:8000/v1
+   export VLLM_EMBED_BASE_URL=http://localhost:8001/v1
+   export GENERATION_MODEL=Qwen2.5-7B-Instruct-AWQ
+   ```
+
+### 参数映射(Ollama → vLLM 非 1:1,工厂已内置适配)
+
+| Ollama 客户端参数 | vLLM 侧对应 |
+|---|---|
+| `num_ctx=8192` | 无客户端参数,启动 `--max-model-len 8192` |
+| `reasoning=False`(关思考段) | `extra_body={"chat_template_kwargs": {"enable_thinking": False}}` |
+| `bind_tools`(工具调用) | 启动 `--enable-auto-tool-choice --tool-call-parser hermes`;**Qwen 系 parser 稳定性需实测**,不发 tool_call 则整条 agentic 链失效 |
+| 单进程双模型 | 生成、嵌入各起一个 vLLM 实例 |
+
+### 显存与硬件
+
+vLLM 激进预分配 KV cache、要求模型整个进显存、不像 Ollama 优雅溢出到 CPU。**8GB 显存(如 RTX 4060)跑 9B + bge-m3 双实例大概率 OOM**;要演示并发吞吐优势需 16–24GB+(L4 / A10 / A100)或 4-bit 量化模型(如上 `-AWQ`)。
 
 ## 规模实验(21,838 块实测)
 
@@ -59,7 +105,7 @@ MDN 中文文档(1,921 文件)实测:嵌入 69 块/s;检索 hit@5 双通道 100%
 
 ## 企业演进路线
 
-Phase 7 候选:多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/路由与缓存命中率时序)、受限角色的每角色 BM25 索引。
+Phase 7 候选:多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/路由与缓存命中率时序)、受限角色的每角色 BM25 索引、**并发服务层 + vLLM 吞吐压测**(FastAPI 异步/SSE 服务 → locust 并发 QPS/p95 曲线,对比 Ollama 串行 vs vLLM continuous batching;后端切换点已就位于 `agentic_rag.llm`)。
 
 设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`
 实现计划:`docs/superpowers/plans/` 下按日期排列(基础版 → 多格式+增量+混合检索 → 音视频+ACL → 语义缓存+评估)
