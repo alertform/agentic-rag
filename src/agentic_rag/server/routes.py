@@ -1,20 +1,24 @@
 """服务层端点。核心业务逻辑在 ResourceRegistry;此处只做 HTTP 编排与埋点。"""
+import asyncio
 import json
 import time
 import uuid
 
 import structlog
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from sse_starlette.sse import EventSourceResponse
+from starlette.concurrency import run_in_threadpool
 
 from agentic_rag import config
 from agentic_rag.ingest import chunk_id
 from agentic_rag.server import metrics
 from agentic_rag.server.logging_config import logger
-from agentic_rag.server.schemas import ChatRequest
+from agentic_rag.server.schemas import ChatRequest, IngestRequest
 
 router = APIRouter()
+
+_ingest_lock = asyncio.Lock()
 
 
 def _registry(request: Request):
@@ -120,3 +124,14 @@ async def chat(request: Request, body: ChatRequest):
             )
 
     return EventSourceResponse(event_stream(), sep="\n")
+
+
+@router.post("/ingest")
+async def ingest(request: Request, body: IngestRequest):
+    if _ingest_lock.locked():
+        raise HTTPException(status_code=409, detail="已有索引任务进行中")
+    registry = _registry(request)
+    async with _ingest_lock:
+        return await run_in_threadpool(
+            registry.ingest, body.collection, body.docs_dir, body.rebuild
+        )
