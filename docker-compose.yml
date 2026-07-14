@@ -1,0 +1,34 @@
+services:
+  agentic-rag:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      AGENTIC_RAG_BACKEND: ${AGENTIC_RAG_BACKEND:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      GENERATION_MODEL: ${GENERATION_MODEL:-qwen3.5:9b}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+    volumes:
+      - ./chroma_db:/app/chroma_db
+    # Linux 需显式映射;Docker Desktop(Win/Mac)自动可用,保留无害
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
