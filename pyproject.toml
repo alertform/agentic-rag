@@ -12,18 +12,29 @@ dependencies = [
     "pymupdf4llm>=1.28.0",
     "rank-bm25>=0.2.2",
     "jieba>=0.42.1",
+]
+
+[project.optional-dependencies]
+vllm = ["langchain-openai>=0.2"]
+server = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.1",
+    "prometheus-client>=0.20",
+    "structlog>=24.1",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+media = [
     "faster-whisper>=1.2.1",
     "av>=18.0.0",
     "pillow>=12.3.0",
 ]
 
-[project.optional-dependencies]
-# vLLM 后端(BACKEND=vllm):OpenAI 兼容客户端。装了才需要,平时不拉。
-# uv sync --extra vllm  或  uv pip install -e ".[vllm]"
-vllm = ["langchain-openai>=0.2"]
-
-[dependency-groups]
-dev = ["pytest>=8.0"]
+[tool.uv]
+default-groups = ["dev", "media"]
 
 [build-system]
 requires = ["hatchling"]
