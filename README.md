@@ -18,6 +18,25 @@ uv run python -m agentic_rag.chat              # 开始问答,exit 退出
 ```
 
 - 语料格式:`.md` 直读;`.pdf` 经 pymupdf4llm 归一化;`.wav/.mp3/.m4a` 经 faster-whisper 转写(时间窗分段,引用带时间戳);`.mp4/.mov` 音轨转写 + 关键帧经 qwen3.5 vision 描述
+
+### 服务化(FastAPI + SSE)
+
+```bash
+uv sync --extra server                      # 装服务依赖
+uv run python -m agentic_rag.server         # 起服务(默认 localhost:8080;AGENTIC_RAG_HOST/AGENTIC_RAG_PORT 配端口)
+# SSE 问答(role/collection/thread_id 透传给图):
+curl -N -X POST localhost:8080/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"星尘咖啡馆的招牌饮品是什么?","thread_id":"s1","role":"manager"}'
+# 其它端点:GET /health、GET /roles、GET /metrics、POST /ingest
+```
+
+全栈(服务 + Prometheus + Grafana):`cp .env.example .env && docker compose up`。
+Ollama 留宿主(compose 经 `host.docker.internal` 连);Grafana 面板见 `localhost:3000`,Prometheus 见 `localhost:9090`。
+
+**注**: 容器栈(Dockerfile / docker-compose)已编写并静态验证,但在开发环境中未实际运行过(无 Docker)——建议在支持 Docker 的机器上验证 `docker build` 与 `docker compose up` 可用性。
+
+媒体依赖已归入默认安装的 `media` group(CLI `uv sync` 仍自带);精简 server 镜像以 `--no-group media` 排除。
 - 增量索引:块级内容哈希做稳定 ID,只嵌入新增/变更块、清理已消失块;重跑输出"新增 0, 删除 0"
 - 权限过滤:语料目录放 `acl.json`(glob → access 级别),`chat --role public|staff|manager` 决定检索可见范围(向量与 BM25 双通道过滤)
 - 试试问:"星尘咖啡馆的招牌饮品是什么?"、"供应商 NX-42 供应什么?"(PDF,编号词面命中靠 BM25)、"例会决定新店选址在哪?"(音频)、"SP-2026 评审的是什么新品?"(视频画面)
@@ -103,12 +122,14 @@ MDN 中文文档(1,921 文件)实测:嵌入 69 块/s;检索 hit@5 双通道 100%
 
 - **混合检索按查询特征路由(已实现)**:规模实验发现 BM25 的价值依语料反转——稀有实体词上是召回救星,术语密集语料的常见词查询上反而注噪(MRR -0.011)。现按 df 自适应判据路由(查询含 `0 < df ≤ max(3, ⌈0.5%·N⌉)` 的词元才开 BM25 通道),复测两套语料混合检索**处处不劣于纯向量**;判据随语料规模自适应,零硬编码模式。
 
+- **服务层加固延后(带标签的决策记录)**:当前为作品级单进程单 worker,内存态 `MemorySaver` 对单进程正确。以下按需补上,非静默省略:多 worker + 共享/持久 checkpointer(SqliteSaver/Redis);ingest 任务队列 + 状态轮询(大语料同步 ingest 会阻塞,demo 语料无需);Prometheus 多进程模式(`PROMETHEUS_MULTIPROC_DIR`,多 worker 才需);鉴权/限流;k8s manifests(本地 kind/minikube 跑通即可)。
+- **可观测性边界埋点**:指标与审计日志只在 server 边界采集(缓存命中在调用点计量、route 经 `MeteredRetriever` 每检索记录),核心检索/缓存模块零改动——延续「不动业务代码」边界。
+
 ## 企业演进路线
 
-Phase 7 候选:多租户、答案级评估(LLM judge)、检索观测面板(命中率/延迟/路由与缓存命中率时序)、受限角色的每角色 BM25 索引、**并发服务层 + vLLM 吞吐压测**(FastAPI 异步/SSE 服务 → locust 并发 QPS/p95 曲线,对比 Ollama 串行 vs vLLM continuous batching;后端切换点已就位于 `agentic_rag.llm`)。
+**已落地(Phase 1-3 服务化弧)**: FastAPI + SSE 流式服务化 ✅、多阶段容器化 + docker-compose ✅、Prometheus/Grafana 检索观测面板(QPS/p95/缓存命中率/路由分布) + structlog 审计日志 ✅。设计与实现:`docs/superpowers/specs/2026-07-14-*` 与 `docs/superpowers/plans/2026-07-14-*`。
 
-设计文档:`docs/superpowers/specs/2026-07-11-agentic-rag-demo-design.md`
-实现计划:`docs/superpowers/plans/` 下按日期排列(基础版 → 多格式+增量+混合检索 → 音视频+ACL → 语义缓存+评估)
+Phase 7 其余候选:多租户、答案级评估(LLM judge)、受限角色的每角色 BM25 索引、**并发压测**(locust QPS/p95 曲线,对比 Ollama 串行 vs vLLM continuous batching;后端切换点已就位于 `agentic_rag.llm`)。
 
 ## 测试
 
