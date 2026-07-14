@@ -464,22 +464,22 @@ git commit -m "feat: 服务层 Prometheus 指标 + MeteredRetriever 计量代理
 
 ```python
 # tests/test_preflight_status.py
-from agentic_rag import preflight
+from agentic_rag import config, preflight
 
 
-def test_ollama_status_shape(monkeypatch):
+def test_ollama_status_unreachable(monkeypatch):
     monkeypatch.setattr(preflight, "_installed_models", lambda: None)
     status = preflight.ollama_status()
     assert status["reachable"] is False
-    assert "missing_models" in status
+    assert config.EMBEDDING_MODEL in status["missing_models"]
 
 
-def test_ollama_status_missing_models(monkeypatch):
-    monkeypatch.setattr(preflight, "_installed_models", lambda: ["bge-m3:latest"])
+def test_ollama_status_missing_generation_model(monkeypatch):
+    # 只装了嵌入模型;生成模型缺失应精确出现在 missing_models,嵌入模型不应出现
+    monkeypatch.setattr(preflight, "_installed_models", lambda: [f"{config.EMBEDDING_MODEL}:latest"])
     status = preflight.ollama_status(require_generation=True)
     assert status["reachable"] is True
-    # 生成模型缺失应出现在 missing_models
-    assert any("qwen" in m or m for m in status["missing_models"]) or status["missing_models"]
+    assert status["missing_models"] == [config.GENERATION_MODEL]
 
 
 def test_vector_store_status_shape():
