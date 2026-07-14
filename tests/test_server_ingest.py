@@ -23,7 +23,7 @@ def test_ingest_returns_counts():
         assert reg.calls == [("c", None, True)]
 
 
-def test_ingest_rejects_concurrent(monkeypatch):
+def test_ingest_rejects_concurrent():
     from agentic_rag.server import routes
 
     async def _busy():

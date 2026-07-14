@@ -45,5 +45,5 @@ NUM_CTX = 8192         # Ollama 上下文窗口(4096 多轮易截断;16384 在 8
 HISTORY_KEEP_TURNS = 4 # LLM 视图保留完整消息的最近轮数,更早轮次仅留问答对
 
 # 服务层(FastAPI)绑定地址;容器内绑 0.0.0.0
-SERVER_HOST = os.environ.get("AGENTIC_RAG_HOST", "0.0.0.0")
+SERVER_HOST = os.environ.get("AGENTIC_RAG_HOST", "127.0.0.1")
 SERVER_PORT = int(os.environ.get("AGENTIC_RAG_PORT", "8080"))

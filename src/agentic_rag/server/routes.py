@@ -26,31 +26,31 @@ def _registry(request: Request):
 
 
 @router.get("/roles")
-async def roles():
+async def roles() -> dict:
     return {"roles": sorted(config.ROLE_ACCESS)}
 
 
 @router.get("/health")
-async def health(request: Request):
+async def health(request: Request) -> dict:
     return _registry(request).health()
 
 
 @router.get("/metrics")
-async def metrics_endpoint():
+async def metrics_endpoint() -> Response:
     payload, content_type = metrics.render()
     return Response(content=payload, media_type=content_type)
 
 
 @router.post("/chat")
-async def chat(request: Request, body: ChatRequest):
+async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
     registry = _registry(request)
-    ctx = registry.build_context(body.collection, body.role)
+    ctx = await run_in_threadpool(registry.build_context, body.collection, body.role)
     run_config = {
         "configurable": {"thread_id": body.thread_id},
         "recursion_limit": config.RECURSION_LIMIT,
     }
     allowed = set(ctx.allowed_access)
-    hit = ctx.cache.lookup(body.question, ctx.live_chunk_ids, allowed)
+    hit = await run_in_threadpool(ctx.cache.lookup, body.question, ctx.live_chunk_ids, allowed)
     request_id = uuid.uuid4().hex[:12]
 
     async def event_stream():
@@ -127,7 +127,7 @@ async def chat(request: Request, body: ChatRequest):
 
 
 @router.post("/ingest")
-async def ingest(request: Request, body: IngestRequest):
+async def ingest(request: Request, body: IngestRequest) -> dict:
     if _ingest_lock.locked():
         raise HTTPException(status_code=409, detail="已有索引任务进行中")
     registry = _registry(request)

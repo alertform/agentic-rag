@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-DASHBOARD = Path("docker/grafana/provisioning/dashboards/agentic-rag.json")
+DASHBOARD = Path(__file__).resolve().parent.parent / "docker" / "grafana" / "provisioning" / "dashboards" / "agentic-rag.json"
 
 
 def test_dashboard_is_valid_json_with_panels():

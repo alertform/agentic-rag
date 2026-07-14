@@ -15,7 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# vLLM 后端(BACKEND=vllm):OpenAI 兼容客户端;装了才需要:uv sync --extra vllm
 vllm = ["langchain-openai>=0.2"]
+# 服务层(FastAPI + SSE + 指标 + 结构化日志);CLI-only 安装不需要:uv sync --extra server
 server = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -23,6 +25,7 @@ server = [
     "prometheus-client>=0.20",
     "structlog>=24.1",
     "httpx>=0.27",
+    "pydantic>=2",
 ]
 
 [dependency-groups]
