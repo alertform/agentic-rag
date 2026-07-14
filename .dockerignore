@@ -1,0 +1,10 @@
+.venv
+chroma_db
+.media_cache
+models
+__pycache__
+*.pyc
+.git
+.pytest_cache
+docs
+tests
