@@ -60,3 +60,27 @@ def test_prebuilt_index_cached():
 def test_live_chunk_ids_from_store():
     reg, docs = _registry()
     assert reg.live_chunk_ids("c") == {f"id{i}" for i in range(len(docs))}
+
+
+def test_live_chunk_ids_returns_frozenset_copy():
+    reg, _ = _registry()
+    ids = reg.live_chunk_ids("c")
+    assert isinstance(ids, frozenset)  # immutable — cannot corrupt the process-wide cache
+
+
+def test_visible_index_skips_caching_when_prebuilt_replaced_during_build(monkeypatch):
+    # I1 guard: if invalidate replaces the prebuilt during the unlocked build_bm25_index,
+    # the stale per-role index must NOT be cached.
+    import agentic_rag.server.resources as res
+    reg, _ = _registry()
+    allowed = frozenset({"public"})  # fewer visible than all -> takes the build path
+    real_build = res.build_bm25_index
+
+    def racing_build(visible):
+        idx = real_build(visible)
+        reg._prebuilt["c"] = object()  # simulate invalidate+rebuild landing mid-build
+        return idx
+
+    monkeypatch.setattr(res, "build_bm25_index", racing_build)
+    reg._visible_index("c", allowed)
+    assert ("c", allowed) not in reg._role_index  # stale index not cached

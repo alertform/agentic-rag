@@ -33,7 +33,7 @@ class RequestContext:
     graph: object
     retriever: MeteredRetriever
     cache: SemanticCache
-    live_chunk_ids: set[str]
+    live_chunk_ids: frozenset[str]
     allowed_access: frozenset[str]
 
 
@@ -110,11 +110,11 @@ class ResourceRegistry:
                 self._prebuilt[collection] = idx
             return self._prebuilt[collection]
 
-    def live_chunk_ids(self, collection: str) -> set[str]:
+    def live_chunk_ids(self, collection: str) -> frozenset[str]:
         with self._lock:
             if collection not in self._live_ids:
                 self._live_ids[collection] = set(self.store(collection).get()["ids"])
-            return self._live_ids[collection]
+            return frozenset(self._live_ids[collection])
 
     def _visible_index(self, collection: str, allowed: frozenset[str]):
         prebuilt = self.prebuilt_index(collection)
@@ -130,10 +130,13 @@ class ResourceRegistry:
                 return self._role_index[key]
         idx = build_bm25_index(visible)
         with self._lock:
-            self._role_index[key] = idx
-            self._role_index.move_to_end(key)
-            while len(self._role_index) > self._role_index_cap:
-                self._role_index.popitem(last=False)
+            # 仅当派生所依据的 prebuilt 仍是当前值时才缓存:invalidate 可能在无锁构建期间
+            # 清除/替换了它,此时 idx 基于过期文档集,缓存会让受限角色被服务陈旧的 BM25 索引。
+            if self._prebuilt.get(collection) is prebuilt:
+                self._role_index[key] = idx
+                self._role_index.move_to_end(key)
+                while len(self._role_index) > self._role_index_cap:
+                    self._role_index.popitem(last=False)
         return idx
 
     def build_retriever(self, collection: str, allowed: frozenset[str]) -> MeteredRetriever:
