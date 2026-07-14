@@ -17,4 +17,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
     AGENTIC_RAG_HOST=0.0.0.0 \
     AGENTIC_RAG_PORT=8080
 EXPOSE 8080
-CMD ["uvicorn", "agentic_rag.server.app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "agentic_rag.server"]
