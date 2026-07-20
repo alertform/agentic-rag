@@ -3,7 +3,7 @@ import json
 
 from langchain_core.documents import Document
 
-from agentic_rag.evals import (
+from agentic_search.evals import (
     hit_at_k,
     load_golden,
     reciprocal_rank,

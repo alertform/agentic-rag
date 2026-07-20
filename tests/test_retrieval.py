@@ -1,7 +1,7 @@
 """混合检索测试:BM25 词面命中兜底向量盲区,RRF 融合。零 Ollama 依赖。"""
 from langchain_core.documents import Document
 
-from agentic_rag.retrieval import HybridRetriever
+from agentic_search.retrieval import HybridRetriever
 
 
 def _doc(text, source="corpus.md", headers="目录"):
@@ -91,7 +91,7 @@ def test_routing_unknown_token_does_not_trigger():
 
 
 def test_bm25_index_carries_df_stats():
-    from agentic_rag.retrieval import build_bm25_index
+    from agentic_search.retrieval import build_bm25_index
 
     index = build_bm25_index(CORPUS)
     assert index.doc_count == len(CORPUS)
@@ -103,7 +103,7 @@ def test_bm25_index_carries_df_stats():
 def test_old_pickle_without_df_treated_stale(tmp_path):
     import pickle
 
-    from agentic_rag.retrieval import BM25Index, build_bm25_index, load_bm25_index
+    from agentic_search.retrieval import BM25Index, build_bm25_index, load_bm25_index
 
     index = build_bm25_index(CORPUS)
     legacy = BM25Index.__new__(BM25Index)  # 模拟旧版对象:无 df 字段
@@ -117,7 +117,7 @@ def test_old_pickle_without_df_treated_stale(tmp_path):
 
 
 def test_bm25_index_roundtrip_and_digest(tmp_path):
-    from agentic_rag.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
+    from agentic_search.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
 
     index = build_bm25_index(CORPUS)
     path = tmp_path / "bm25.pkl"
@@ -135,7 +135,7 @@ def test_bm25_index_roundtrip_and_digest(tmp_path):
 
 
 def test_bm25_index_stale_digest_returns_none(tmp_path):
-    from agentic_rag.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
+    from agentic_search.retrieval import build_bm25_index, load_bm25_index, save_bm25_index
 
     index = build_bm25_index(CORPUS)
     path = tmp_path / "bm25.pkl"

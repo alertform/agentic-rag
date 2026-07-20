@@ -1,4 +1,4 @@
-from agentic_rag import config
+from agentic_search import config
 
 
 def test_server_host_and_port_defaults():

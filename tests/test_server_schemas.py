@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agentic_rag.server.schemas import ChatRequest, IngestRequest
+from agentic_search.server.schemas import ChatRequest, IngestRequest
 
 
 def test_chat_request_defaults():

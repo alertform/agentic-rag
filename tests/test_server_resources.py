@@ -1,6 +1,6 @@
 from langchain_core.documents import Document
 
-from agentic_rag.server.resources import RequestContext, ResourceRegistry
+from agentic_search.server.resources import RequestContext, ResourceRegistry
 
 
 class FakeStore:
@@ -39,6 +39,35 @@ def _registry():
     return reg, docs
 
 
+class StubSearchBackend:
+    def search(self, query, max_results):
+        return []
+
+
+def test_build_context_with_search_backend_has_web_recorder():
+    docs = _docs()
+    reg = ResourceRegistry(
+        embeddings=object(), llm=FakeLLM(), search_backend=StubSearchBackend()
+    )
+    reg._stores["c"] = FakeStore(docs)
+    ctx = reg.build_context("c", "manager")
+    assert ctx.web_recorder is not None
+    # 每请求独立 recorder(并发隔离)
+    ctx2 = reg.build_context("c", "manager")
+    assert ctx.web_recorder is not ctx2.web_recorder
+
+
+def test_build_context_without_key_is_pure_rag(monkeypatch):
+    from agentic_search import config
+
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    docs = _docs()
+    reg = ResourceRegistry(embeddings=object(), llm=FakeLLM())
+    reg._stores["c"] = FakeStore(docs)
+    ctx = reg.build_context("c", "manager")
+    assert ctx.web_recorder is None
+
+
 def test_build_retriever_instances_are_isolated():
     reg, _ = _registry()
     r1 = reg.build_retriever("c", frozenset({"public", "internal"}))
@@ -71,7 +100,7 @@ def test_live_chunk_ids_returns_frozenset_copy():
 def test_visible_index_skips_caching_when_prebuilt_replaced_during_build(monkeypatch):
     # I1 guard: if invalidate replaces the prebuilt during the unlocked build_bm25_index,
     # the stale per-role index must NOT be cached.
-    import agentic_rag.server.resources as res
+    import agentic_search.server.resources as res
     reg, _ = _registry()
     allowed = frozenset({"public"})  # fewer visible than all -> takes the build path
     real_build = res.build_bm25_index

@@ -1,7 +1,7 @@
 """语义缓存测试:命中/失效/ACL 防泄漏。零 Ollama 依赖。"""
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from agentic_rag.cache import SemanticCache
+from agentic_search.cache import SemanticCache
 
 
 def _cache(tmp_path):

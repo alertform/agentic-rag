@@ -4,8 +4,8 @@ from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessageChunk
 
-from agentic_rag.server.app import create_app
-from agentic_rag.server.resources import RequestContext
+from agentic_search.server.app import create_app
+from agentic_search.server.resources import RequestContext
 
 
 class StubRetriever:
@@ -102,8 +102,40 @@ def test_chat_streams_tokens_and_done_with_sources():
     assert cache.stored  # 有命中块 + 有答案 → 写缓存
 
 
+class StubWebRecorder:
+    def __init__(self, results):
+        self._results = results
+
+    def take_recorded(self):
+        r, self._results = self._results, []
+        return r
+
+
+def test_chat_web_answer_reports_web_sources_and_skips_cache():
+    from agentic_search.search import SearchResult
+
+    retriever = StubRetriever([])
+    graph = StubGraph(["北京晴"], retriever=retriever, docs=[_doc()])
+    cache = StubCache(hit=None)
+    web = StubWebRecorder([SearchResult("天气", "https://w", "晴")])
+
+    def build(collection, role):
+        return RequestContext(
+            graph, retriever, cache, {"id0"}, frozenset({"public"}), web_recorder=web
+        )
+
+    app = create_app(registry=FakeRegistry(build))
+    with TestClient(app) as client:
+        resp = client.post("/chat", json={"question": "北京天气?", "thread_id": "t1"})
+        events = _parse_events(resp.text)
+        done = [d for e, d in events if e == "done"][0]
+        assert done["web_sources"] == ["https://w"]
+        assert done["sources"] == ["a.md"]
+    assert cache.stored == []  # 缓存写侧 gate:用过 web 的回答不缓存
+
+
 def test_chat_cache_hit_short_circuits():
-    from agentic_rag.cache import CacheHit
+    from agentic_search.cache import CacheHit
 
     retriever = StubRetriever([])
     graph = StubGraph(["不应产生"], retriever=retriever)

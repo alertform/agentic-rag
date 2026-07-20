@@ -1,5 +1,5 @@
 """媒体管道测试:时间窗分段 / 关键帧抽取 / 视频块结构。零模型依赖。"""
-from agentic_rag.media import Segment, segments_to_documents
+from agentic_search.media import Segment, segments_to_documents
 
 
 def test_segments_group_into_windows():
@@ -31,7 +31,7 @@ def test_locator_format_with_hours():
 def test_extract_keyframes_interval(tmp_path):
     from conftest import make_video
 
-    from agentic_rag.media import extract_keyframes
+    from agentic_search.media import extract_keyframes
 
     video = tmp_path / "clip.mp4"
     make_video(video, seconds=20, fps=2)
@@ -45,7 +45,7 @@ def test_extract_keyframes_interval(tmp_path):
 def test_load_documents_routes_media(tmp_path):
     from conftest import make_video
 
-    from agentic_rag.ingest import load_documents
+    from agentic_search.ingest import load_documents
 
     (tmp_path / "menu.md").write_text("# 菜单\n\n拿铁 32 元。", encoding="utf-8")
     (tmp_path / "meeting.wav").write_bytes(b"fake-bytes")  # 假转写器不读内容
@@ -63,7 +63,7 @@ def test_load_documents_routes_media(tmp_path):
 
 
 def test_media_parse_cache_avoids_reprocessing(tmp_path):
-    from agentic_rag.ingest import load_documents
+    from agentic_search.ingest import load_documents
 
     (tmp_path / "meeting.wav").write_bytes(b"audio-bytes-v1")
     calls = {"n": 0}
@@ -86,7 +86,7 @@ def test_media_parse_cache_avoids_reprocessing(tmp_path):
 
 
 def test_transcribe_failure_skips_file_not_cached_and_recoverable(tmp_path):
-    from agentic_rag.ingest import load_documents
+    from agentic_search.ingest import load_documents
 
     (tmp_path / "menu.md").write_text("# 菜单\n\n拿铁 32 元。", encoding="utf-8")
     (tmp_path / "meeting.wav").write_bytes(b"audio-bytes")
@@ -115,7 +115,7 @@ def test_video_to_documents_propagates_transcribe_error(tmp_path):
     import pytest
     from conftest import make_video
 
-    from agentic_rag.media import video_to_documents
+    from agentic_search.media import video_to_documents
 
     make_video(tmp_path / "v.mp4", seconds=6, fps=2)
 
@@ -130,7 +130,7 @@ def test_video_to_documents_propagates_transcribe_error(tmp_path):
 
 
 def test_media_skipped_without_transcriber(tmp_path):
-    from agentic_rag.ingest import load_documents
+    from agentic_search.ingest import load_documents
 
     (tmp_path / "a.md").write_text("# A\n\n内容。", encoding="utf-8")
     (tmp_path / "meeting.wav").write_bytes(b"fake-bytes")
@@ -141,7 +141,7 @@ def test_media_skipped_without_transcriber(tmp_path):
 def test_video_to_documents_merges_audio_and_frames(tmp_path):
     from conftest import make_video
 
-    from agentic_rag.media import video_to_documents
+    from agentic_search.media import video_to_documents
 
     video = tmp_path / "review.mp4"
     make_video(video, seconds=20, fps=2)

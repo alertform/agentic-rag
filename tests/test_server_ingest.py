@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi.testclient import TestClient
 
-from agentic_rag.server.app import create_app
+from agentic_search.server.app import create_app
 
 
 class FakeRegistry:
@@ -24,7 +24,7 @@ def test_ingest_returns_counts():
 
 
 def test_ingest_rejects_concurrent():
-    from agentic_rag.server import routes
+    from agentic_search.server import routes
 
     async def _busy():
         # 手动占用锁,模拟一个进行中的 ingest

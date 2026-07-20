@@ -1,7 +1,7 @@
 import pytest
 
-from agentic_rag.ingest import load_documents
-from agentic_rag.parsers import UnsupportedFormatError, parse_file
+from agentic_search.ingest import load_documents
+from agentic_search.parsers import UnsupportedFormatError, parse_file
 
 
 def _make_pdf(path, text):

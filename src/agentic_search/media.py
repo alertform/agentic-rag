@@ -75,7 +75,7 @@ def make_ollama_captioner() -> Captioner:
     import json
     import urllib.request
 
-    from agentic_rag import config
+    from agentic_search import config
 
     def caption(image_png: bytes) -> str:
         payload = {
@@ -164,7 +164,7 @@ def make_whisper_transcriber(model_size: str = "small") -> Transcriber:
     """
     import os
 
-    from agentic_rag import config
+    from agentic_search import config
 
     local_dir = config.PROJECT_ROOT / "models" / f"faster-whisper-{model_size}"
     target = str(local_dir) if local_dir.is_dir() else model_size

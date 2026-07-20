@@ -14,7 +14,7 @@ FROM python:3.12-slim-bookworm AS runtime
 WORKDIR /app
 COPY --from=build /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
-    AGENTIC_RAG_HOST=0.0.0.0 \
-    AGENTIC_RAG_PORT=8080
+    AGENTIC_SEARCH_HOST=0.0.0.0 \
+    AGENTIC_SEARCH_PORT=8080
 EXPOSE 8080
-CMD ["python", "-m", "agentic_rag.server"]
+CMD ["python", "-m", "agentic_search.server"]

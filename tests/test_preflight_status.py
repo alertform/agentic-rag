@@ -1,4 +1,4 @@
-from agentic_rag import config, preflight
+from agentic_search import config, preflight
 
 
 def test_ollama_status_unreachable(monkeypatch):

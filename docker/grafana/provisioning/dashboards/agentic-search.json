@@ -1,5 +1,5 @@
 {
-  "title": "agentic-rag 检索观测",
+  "title": "agentic-search 检索观测",
   "timezone": "browser",
   "schemaVersion": 39,
   "refresh": "5s",
@@ -9,28 +9,28 @@
       "id": 1, "title": "QPS", "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
       "targets": [
-        {"expr": "sum(rate(agentic_rag_request_latency_seconds_count[1m]))", "legendFormat": "qps"}
+        {"expr": "sum(rate(agentic_search_request_latency_seconds_count[1m]))", "legendFormat": "qps"}
       ]
     },
     {
       "id": 2, "title": "p95 延迟", "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
       "targets": [
-        {"expr": "histogram_quantile(0.95, sum(rate(agentic_rag_request_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}
+        {"expr": "histogram_quantile(0.95, sum(rate(agentic_search_request_latency_seconds_bucket[5m])) by (le))", "legendFormat": "p95"}
       ]
     },
     {
       "id": 3, "title": "缓存命中率", "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
       "targets": [
-        {"expr": "sum(rate(agentic_rag_cache_lookup_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(agentic_rag_cache_lookup_total[5m])), 0.001)", "legendFormat": "hit ratio"}
+        {"expr": "sum(rate(agentic_search_cache_lookup_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(agentic_search_cache_lookup_total[5m])), 0.001)", "legendFormat": "hit ratio"}
       ]
     },
     {
       "id": 4, "title": "路由分布", "type": "timeseries",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
       "targets": [
-        {"expr": "sum by (route) (rate(agentic_rag_route_total[5m]))", "legendFormat": "{{route}}"}
+        {"expr": "sum by (route) (rate(agentic_search_route_total[5m]))", "legendFormat": "{{route}}"}
       ]
     }
   ]

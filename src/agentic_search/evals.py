@@ -1,11 +1,11 @@
 """检索质量评估:golden set 上的 hit@k 与 MRR,纯向量 vs 混合检索对比。
 
-用法: uv run python -m agentic_rag.evals  (需 Ollama embedding 模型,不需要生成模型)
+用法: uv run python -m agentic_search.evals  (需 Ollama embedding 模型,不需要生成模型)
 """
 import json
 from pathlib import Path
 
-from agentic_rag import config
+from agentic_search import config
 
 
 def load_golden(path: Path) -> list[dict]:
@@ -49,7 +49,7 @@ def run_evals(store, chunks, golden_path: Path, timing: bool = False, prebuilt=N
     import statistics
     import time
 
-    from agentic_rag.retrieval import HybridRetriever
+    from agentic_search.retrieval import HybridRetriever
 
     golden = load_golden(golden_path)
     k = config.TOP_K
@@ -102,9 +102,9 @@ def main() -> None:
 
     from langchain_chroma import Chroma
 
-    from agentic_rag.llm import make_embeddings
-    from agentic_rag.preflight import check_ollama
-    from agentic_rag.retrieval import build_bm25_index, corpus_digest, load_all_chunks, load_bm25_index
+    from agentic_search.llm import make_embeddings
+    from agentic_search.preflight import check_ollama
+    from agentic_search.retrieval import build_bm25_index, corpus_digest, load_all_chunks, load_bm25_index
 
     parser = argparse.ArgumentParser(description="检索质量评估")
     parser.add_argument("--collection", default=config.COLLECTION_NAME)

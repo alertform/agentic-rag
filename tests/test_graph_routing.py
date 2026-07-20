@@ -3,13 +3,19 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
-from agentic_rag.graph import build_graph
+from agentic_search.graph import SYSTEM_PROMPT_WEB, build_graph
 
 
 @tool
 def retrieve_docs(query: str) -> str:
     """测试用假检索工具。"""
     return "[来源: menu.md | 菜单 > 招牌饮品]\n星尘拿铁 32 元。"
+
+
+@tool
+def web_search(query: str) -> str:
+    """测试用假 Web 搜索工具。"""
+    return "[来源: 天气网 | https://w]\n北京晴。"
 
 
 def _scripted(*messages):
@@ -37,6 +43,34 @@ def test_no_tool_call_goes_straight_to_end():
     assert [m.type for m in result["messages"]] == ["human", "ai"]
 
 
+def test_web_search_tool_call_routes_through_toolnode():
+    llm = _scripted(
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "web_search", "args": {"query": "北京天气"}, "id": "w1", "type": "tool_call"}],
+        ),
+        AIMessage(content="北京晴。\n来源: https://w"),
+    )
+    app = build_graph(llm, [retrieve_docs, web_search], system_prompt=SYSTEM_PROMPT_WEB)
+    result = app.invoke({"messages": [HumanMessage("北京今天天气?")]})
+    assert [m.type for m in result["messages"]] == ["human", "ai", "tool", "ai"]
+    assert "北京晴" in result["messages"][2].content  # web 工具结果进了对话
+
+
+def test_system_prompt_param_reaches_llm():
+    captured: list[str] = []
+
+    class SpyModel(GenericFakeChatModel):
+        def invoke(self, input, *args, **kwargs):
+            captured.append(input[0].content)
+            return super().invoke(input, *args, **kwargs)
+
+    llm = SpyModel(messages=iter([AIMessage(content="hi")]))
+    app = build_graph(llm, [retrieve_docs], system_prompt="自定义PROMPT")
+    app.invoke({"messages": [HumanMessage("你好")]})
+    assert captured[0] == "自定义PROMPT"
+
+
 def test_checkpointer_keeps_history_across_turns():
     llm = _scripted(AIMessage(content="第一轮回答"), AIMessage(content="第二轮回答"))
     app = build_graph(llm, [retrieve_docs], checkpointer=MemorySaver())
@@ -61,7 +95,7 @@ def _tool_turn(tag):
 
 
 def test_trim_keeps_short_history_intact():
-    from agentic_rag.graph import trim_for_llm
+    from agentic_search.graph import trim_for_llm
 
     msgs = _tool_turn("A")
     assert trim_for_llm(msgs, keep_turns=4) == msgs
@@ -70,7 +104,7 @@ def test_trim_keeps_short_history_intact():
 def test_trim_drops_tool_pairs_from_old_turns():
     from langchain_core.messages import ToolMessage
 
-    from agentic_rag.graph import trim_for_llm
+    from agentic_search.graph import trim_for_llm
 
     msgs = _tool_turn("A") + _tool_turn("B") + _tool_turn("C")
     trimmed = trim_for_llm(msgs, keep_turns=1)
@@ -86,7 +120,7 @@ def test_trim_drops_tool_pairs_from_old_turns():
 
 
 def test_agent_sees_trimmed_view_but_state_keeps_all(monkeypatch):
-    from agentic_rag import config
+    from agentic_search import config
 
     monkeypatch.setattr(config, "HISTORY_KEEP_TURNS", 1)
     captured: list[int] = []

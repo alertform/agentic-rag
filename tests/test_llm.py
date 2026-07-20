@@ -1,7 +1,7 @@
 """后端工厂测试:验证 Ollama ↔ vLLM 的唯一切换点接线正确。零模型依赖(构造客户端不连服务)。"""
 import pytest
 
-from agentic_rag import config, llm
+from agentic_search import config, llm
 
 
 def test_make_chat_llm_ollama_wires_config(monkeypatch):
@@ -27,7 +27,7 @@ def test_unknown_backend_raises_with_hint(monkeypatch):
         with pytest.raises(ValueError) as exc:
             factory()
         assert "triton" in str(exc.value)
-        assert "AGENTIC_RAG_BACKEND" in str(exc.value)
+        assert "AGENTIC_SEARCH_BACKEND" in str(exc.value)
 
 
 def test_make_chat_llm_vllm_returns_openai_client(monkeypatch):

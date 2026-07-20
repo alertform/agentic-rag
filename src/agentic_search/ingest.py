@@ -9,7 +9,7 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 
-from agentic_rag import config
+from agentic_search import config
 
 _HEADERS_TO_SPLIT_ON = [("#", "h1"), ("##", "h2"), ("###", "h3")]
 
@@ -44,15 +44,15 @@ def load_documents(
     - 未注入转写/描述器时跳过对应媒体文件
     - 块 metadata 按目录 acl.json 打 access 标(无规则默认 public)
     """
-    from agentic_rag.acl import access_for, load_acl
-    from agentic_rag.media import (
+    from agentic_search.acl import access_for, load_acl
+    from agentic_search.media import (
         SUPPORTED_AUDIO,
         SUPPORTED_VIDEO,
         cached_media_documents,
         segments_to_documents,
         video_to_documents,
     )
-    from agentic_rag.parsers import SUPPORTED_EXTENSIONS, parse_file
+    from agentic_search.parsers import SUPPORTED_EXTENSIONS, parse_file
 
     if media_cache_dir is None:
         media_cache_dir = config.MEDIA_CACHE_DIR
@@ -141,7 +141,7 @@ def build_vector_store(
     """打开本地 Chroma 并同步块:默认增量;rebuild=True 时清空全量重建。"""
     from langchain_chroma import Chroma
 
-    from agentic_rag.llm import make_embeddings
+    from agentic_search.llm import make_embeddings
 
     embeddings = make_embeddings()
     store = Chroma(
@@ -159,8 +159,8 @@ def main() -> None:
     import argparse
     import time
 
-    from agentic_rag.media import SUPPORTED_AUDIO, SUPPORTED_VIDEO
-    from agentic_rag.preflight import check_ollama
+    from agentic_search.media import SUPPORTED_AUDIO, SUPPORTED_VIDEO
+    from agentic_search.preflight import check_ollama
 
     parser = argparse.ArgumentParser(description="文档/媒体索引管道")
     parser.add_argument("docs_dir", nargs="?", default=str(config.SAMPLE_DOCS_DIR))
@@ -179,12 +179,12 @@ def main() -> None:
 
     transcriber = captioner = None
     if has_audio or has_video:
-        from agentic_rag.media import make_whisper_transcriber
+        from agentic_search.media import make_whisper_transcriber
 
         print("[ingest] 检测到媒体文件,加载 ASR 模型…", flush=True)
         transcriber = make_whisper_transcriber()
     if has_video:
-        from agentic_rag.media import make_ollama_captioner
+        from agentic_search.media import make_ollama_captioner
 
         captioner = make_ollama_captioner()
 
@@ -205,7 +205,7 @@ def main() -> None:
         print(f"[ingest] 耗时: 解析切块 {t_load:.1f}s, 嵌入写库 {t_embed:.1f}s ({rate:.1f} 块/s)")
 
     # BM25 索引持久化:分词建索引一次完成,chat/evals 秒开
-    from agentic_rag.retrieval import build_bm25_index, save_bm25_index
+    from agentic_search.retrieval import build_bm25_index, save_bm25_index
 
     t0 = time.perf_counter()
     index = build_bm25_index(chunks)
@@ -219,7 +219,7 @@ def main() -> None:
         and args.collection == config.COLLECTION_NAME
         and golden_path.is_file()
     ):
-        from agentic_rag.evals import run_evals
+        from agentic_search.evals import run_evals
 
         try:
             run_evals(store, chunks, golden_path)

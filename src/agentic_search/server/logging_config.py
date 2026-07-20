@@ -22,4 +22,4 @@ def configure_logging(level: int = logging.INFO) -> None:
     )
 
 
-logger = structlog.get_logger("agentic_rag.server")
+logger = structlog.get_logger("agentic_search.server")

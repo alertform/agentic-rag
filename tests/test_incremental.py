@@ -1,7 +1,7 @@
 """增量索引测试:内容哈希稳定 ID + upsert + 消失来源清理。零 Ollama 依赖。"""
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from agentic_rag import ingest
+from agentic_search import ingest
 
 
 def _store(tmp_path):

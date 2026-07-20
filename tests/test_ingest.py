@@ -1,4 +1,4 @@
-from agentic_rag.ingest import load_documents, split_markdown
+from agentic_search.ingest import load_documents, split_markdown
 
 
 def test_split_keeps_source_and_header_path():

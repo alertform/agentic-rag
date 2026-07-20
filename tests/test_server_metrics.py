@@ -1,4 +1,4 @@
-from agentic_rag.server import metrics
+from agentic_search.server import metrics
 
 
 class _Inner:
@@ -38,7 +38,7 @@ def test_metered_retriever_counts_route_and_calls():
 
 def test_render_returns_prometheus_text():
     payload, content_type = metrics.render()
-    assert b"agentic_rag_request_latency_seconds" in payload
+    assert b"agentic_search_request_latency_seconds" in payload
     assert "text/plain" in content_type
 
 
@@ -59,3 +59,24 @@ def test_record_route_ignores_falsy():
     metrics.record_route(None)
     metrics.record_route("")
     assert _value(metrics.ROUTE_TOTAL, route="vector") == before
+
+
+def test_metered_search_backend_counts_ok_and_error():
+    import pytest
+
+    class Ok:
+        def search(self, query, max_results):
+            return ["r"]
+
+    class Bad:
+        def search(self, query, max_results):
+            raise RuntimeError("boom")
+
+    ok_before = _value(metrics.WEB_SEARCH_CALLS_TOTAL, result="ok")
+    assert metrics.MeteredSearchBackend(Ok()).search("q", 3) == ["r"]
+    assert _value(metrics.WEB_SEARCH_CALLS_TOTAL, result="ok") == ok_before + 1
+
+    err_before = _value(metrics.WEB_SEARCH_CALLS_TOTAL, result="error")
+    with pytest.raises(RuntimeError):
+        metrics.MeteredSearchBackend(Bad()).search("q", 3)
+    assert _value(metrics.WEB_SEARCH_CALLS_TOTAL, result="error") == err_before + 1

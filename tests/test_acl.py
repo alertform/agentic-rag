@@ -3,9 +3,9 @@ import json
 
 from langchain_core.documents import Document
 
-from agentic_rag.acl import access_for, load_acl
-from agentic_rag.ingest import load_documents
-from agentic_rag.retrieval import HybridRetriever
+from agentic_search.acl import access_for, load_acl
+from agentic_search.ingest import load_documents
+from agentic_search.retrieval import HybridRetriever
 
 
 def test_first_matching_glob_wins(tmp_path):

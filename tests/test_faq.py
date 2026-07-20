@@ -1,8 +1,8 @@
 """FAQ 候选导出与缓存命中计数测试。零模型依赖。"""
 from langchain_core.embeddings import DeterministicFakeEmbedding
 
-from agentic_rag.cache import SemanticCache
-from agentic_rag.faq import export_candidates
+from agentic_search.cache import SemanticCache
+from agentic_search.faq import export_candidates
 
 
 def _cache(tmp_path):

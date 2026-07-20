@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from agentic_rag.server.app import create_app
+from agentic_search.server.app import create_app
 
 
 class FakeRegistry:
@@ -30,4 +30,4 @@ def test_metrics_endpoint():
     with _client() as client:
         resp = client.get("/metrics")
         assert resp.status_code == 200
-        assert "agentic_rag_request_latency_seconds" in resp.text
+        assert "agentic_search_request_latency_seconds" in resp.text

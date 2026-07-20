@@ -10,11 +10,11 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
-from agentic_rag import config
-from agentic_rag.ingest import chunk_id
-from agentic_rag.server import metrics
-from agentic_rag.server.logging_config import logger
-from agentic_rag.server.schemas import ChatRequest, IngestRequest
+from agentic_search import config
+from agentic_search.ingest import chunk_id
+from agentic_search.server import metrics
+from agentic_search.server.logging_config import logger
+from agentic_search.server.schemas import ChatRequest, IngestRequest
 
 router = APIRouter()
 
@@ -66,7 +66,10 @@ async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
                 yield {
                     "event": "done",
                     "data": json.dumps(
-                        {"sources": hit.sources, "route": None, "cache_hit": True, "request_id": request_id},
+                        {
+                            "sources": hit.sources, "web_sources": [], "route": None,
+                            "cache_hit": True, "request_id": request_id,
+                        },
                         ensure_ascii=False,
                     ),
                 }
@@ -98,9 +101,12 @@ async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
 
             recorded = ctx.retriever.take_recorded()
             sources = sorted({d.metadata["source"] for d in recorded})
+            web_results = ctx.web_recorder.take_recorded() if ctx.web_recorder else []
+            web_sources = sorted({r.url for r in web_results})
             route = ctx.retriever.last_route
             answer = "".join(parts).strip()
-            if recorded and answer:
+            # 缓存写侧 gate:用过 web 的回答不缓存(时效性内容无法靠块哈希失效)
+            if recorded and answer and not web_results:
                 ctx.cache.store(
                     question=body.question, answer=answer, sources=sources,
                     chunk_ids=[chunk_id(d) for d in recorded],
@@ -110,7 +116,10 @@ async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
             yield {
                 "event": "done",
                 "data": json.dumps(
-                    {"sources": sources, "route": route, "cache_hit": False, "request_id": request_id},
+                    {
+                        "sources": sources, "web_sources": web_sources, "route": route,
+                        "cache_hit": False, "request_id": request_id,
+                    },
                     ensure_ascii=False,
                 ),
             }
@@ -118,7 +127,7 @@ async def chat(request: Request, body: ChatRequest) -> EventSourceResponse:
             metrics.observe_latency("chat", latency)
             logger.info(
                 "chat_completed", role=body.role, collection=body.collection,
-                cache_hit=False, route=route, sources=sources,
+                cache_hit=False, route=route, sources=sources, web_sources=web_sources,
                 chunk_ids=[chunk_id(d) for d in recorded],
                 latency_ms=round(latency * 1000, 1),
             )

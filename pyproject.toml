@@ -1,7 +1,7 @@
 [project]
-name = "agentic-rag"
+name = "agentic-search"
 version = "0.1.0"
-description = "LangChain + LangGraph 本地 agentic RAG"
+description = "本地 RAG + Web 搜索双通道的 agentic search 引擎(LangChain + LangGraph)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "langchain-core>=0.3",
@@ -12,6 +12,7 @@ dependencies = [
     "pymupdf4llm>=1.28.0",
     "rank-bm25>=0.2.2",
     "jieba>=0.42.1",
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -44,4 +45,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentic_rag"]
+packages = ["src/agentic_search"]

@@ -3,7 +3,7 @@ import json
 import structlog
 from structlog.testing import capture_logs
 
-from agentic_rag.server.logging_config import configure_logging, logger
+from agentic_search.server.logging_config import configure_logging, logger
 
 
 def test_configure_logging_is_idempotent():

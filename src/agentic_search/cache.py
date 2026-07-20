@@ -8,7 +8,7 @@
 import uuid
 from typing import NamedTuple
 
-from agentic_rag import config
+from agentic_search import config
 
 
 class CacheHit(NamedTuple):

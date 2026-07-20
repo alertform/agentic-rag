@@ -4,7 +4,7 @@ import sys
 import urllib.error
 import urllib.request
 
-from agentic_rag import config
+from agentic_search import config
 
 
 def _installed_models() -> list[str] | None:
@@ -56,4 +56,4 @@ def vector_store_status(collection: str | None = None) -> dict:
 
 def check_vector_store() -> None:
     if vector_store_status()["count"] == 0:
-        sys.exit("[preflight] 向量库为空。先运行: uv run python -m agentic_rag.ingest [md目录]")
+        sys.exit("[preflight] 向量库为空。先运行: uv run python -m agentic_search.ingest [md目录]")

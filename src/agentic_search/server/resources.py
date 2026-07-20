@@ -14,18 +14,19 @@ from pathlib import Path
 
 from langgraph.checkpoint.memory import MemorySaver
 
-from agentic_rag import config
-from agentic_rag.cache import SemanticCache
-from agentic_rag.graph import build_graph
-from agentic_rag.retrieval import (
+from agentic_search import config
+from agentic_search.cache import SemanticCache
+from agentic_search.graph import SYSTEM_PROMPT, SYSTEM_PROMPT_WEB, build_graph
+from agentic_search.retrieval import (
     HybridRetriever,
     build_bm25_index,
     corpus_digest,
     load_all_chunks,
     load_bm25_index,
 )
-from agentic_rag.server.metrics import MeteredRetriever
-from agentic_rag.tools import make_retrieve_tool
+from agentic_search.search import RecordingBackend, make_search_backend
+from agentic_search.server.metrics import MeteredRetriever, MeteredSearchBackend
+from agentic_search.tools import make_retrieve_tool, make_web_search_tool
 
 
 @dataclass
@@ -35,6 +36,7 @@ class RequestContext:
     cache: SemanticCache
     live_chunk_ids: frozenset[str]
     allowed_access: frozenset[str]
+    web_recorder: RecordingBackend | None = None
 
 
 class ResourceRegistry:
@@ -46,11 +48,14 @@ class ResourceRegistry:
         llm=None,
         checkpointer=None,
         role_index_cache_size: int = 8,
+        search_backend=None,
     ):
         self._chroma_dir = Path(chroma_dir) if chroma_dir else config.CHROMA_DIR
         self._embeddings = embeddings
         self._llm = llm
         self._checkpointer = checkpointer or MemorySaver()
+        # 注入优先(测试用 fake);未注入则走工厂,TAVILY_API_KEY 缺失时为 None → 纯 RAG
+        self._search_backend = search_backend if search_backend is not None else make_search_backend()
         self._cache: SemanticCache | None = None
         self._stores: dict = {}
         self._prebuilt: dict = {}
@@ -64,7 +69,7 @@ class ResourceRegistry:
     @property
     def embeddings(self):
         if self._embeddings is None:
-            from agentic_rag.llm import make_embeddings
+            from agentic_search.llm import make_embeddings
 
             self._embeddings = make_embeddings()
         return self._embeddings
@@ -72,7 +77,7 @@ class ResourceRegistry:
     @property
     def llm(self):
         if self._llm is None:
-            from agentic_rag.llm import make_chat_llm
+            from agentic_search.llm import make_chat_llm
 
             self._llm = make_chat_llm()
         return self._llm
@@ -152,9 +157,22 @@ class ResourceRegistry:
     def build_context(self, collection: str, role: str) -> RequestContext:
         allowed = frozenset(config.ROLE_ACCESS[role])
         retriever = self.build_retriever(collection, allowed)
-        retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=False)
+        tools = [make_retrieve_tool(retriever, k=config.TOP_K, verbose=False)]
+        web_recorder = None
+        if self._search_backend is not None:
+            # 每请求独立 recorder:_recorded 落在请求对象上,并发竞态结构性消失
+            web_recorder = RecordingBackend(MeteredSearchBackend(self._search_backend))
+            tools.append(
+                make_web_search_tool(
+                    web_recorder, max_results=config.WEB_SEARCH_MAX_RESULTS, verbose=False
+                )
+            )
+        system_prompt = SYSTEM_PROMPT_WEB if web_recorder is not None else SYSTEM_PROMPT
         graph = build_graph(
-            self.llm.bind_tools([retrieve]), [retrieve], checkpointer=self._checkpointer
+            self.llm.bind_tools(tools),
+            tools,
+            checkpointer=self._checkpointer,
+            system_prompt=system_prompt,
         )
         return RequestContext(
             graph=graph,
@@ -162,11 +180,12 @@ class ResourceRegistry:
             cache=self.cache,
             live_chunk_ids=self.live_chunk_ids(collection),
             allowed_access=allowed,
+            web_recorder=web_recorder,
         )
 
     def ingest(self, collection: str, docs_dir=None, rebuild: bool = False) -> dict:
-        from agentic_rag import ingest as ingest_mod
-        from agentic_rag.retrieval import save_bm25_index
+        from agentic_search import ingest as ingest_mod
+        from agentic_search.retrieval import save_bm25_index
 
         directory = Path(docs_dir) if docs_dir else config.SAMPLE_DOCS_DIR
         if not directory.is_dir():
@@ -196,7 +215,7 @@ class ResourceRegistry:
                 self._role_index.pop(key, None)
 
     def health(self, collection: str | None = None) -> dict:
-        from agentic_rag import preflight
+        from agentic_search import preflight
 
         coll = collection or config.COLLECTION_NAME
         if config.BACKEND == "ollama":
@@ -212,4 +231,5 @@ class ResourceRegistry:
             "backend": config.BACKEND,
             "ollama": ollama,
             "vector_store": vs,
+            "web_search": self._search_backend is not None,
         }

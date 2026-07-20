@@ -3,25 +3,26 @@ from langchain_chroma import Chroma
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from agentic_rag import config, preflight
-from agentic_rag.cache import SemanticCache
-from agentic_rag.graph import build_graph
-from agentic_rag.llm import make_chat_llm, make_embeddings
-from agentic_rag.ingest import chunk_id
-from agentic_rag.retrieval import (
+from agentic_search import config, preflight
+from agentic_search.cache import SemanticCache
+from agentic_search.graph import SYSTEM_PROMPT, SYSTEM_PROMPT_WEB, build_graph
+from agentic_search.llm import make_chat_llm, make_embeddings
+from agentic_search.ingest import chunk_id
+from agentic_search.retrieval import (
     HybridRetriever,
     build_bm25_index,
     corpus_digest,
     load_all_chunks,
     load_bm25_index,
 )
-from agentic_rag.tools import make_retrieve_tool
+from agentic_search.search import RecordingBackend, make_search_backend
+from agentic_search.tools import make_retrieve_tool, make_web_search_tool
 
 
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Agentic RAG CLI 问答")
+    parser = argparse.ArgumentParser(description="Agentic Search CLI 问答")
     parser.add_argument(
         "--role",
         default="manager",
@@ -52,16 +53,28 @@ def main() -> None:
         store, chunks, allowed_access=allowed_access, prebuilt=prebuilt
     )
     retrieve = make_retrieve_tool(retriever, k=config.TOP_K, verbose=True)
+    tools = [retrieve]
+    backend = make_search_backend()
+    web_recorder = None
+    if backend is not None:
+        web_recorder = RecordingBackend(backend)
+        tools.append(
+            make_web_search_tool(web_recorder, max_results=config.WEB_SEARCH_MAX_RESULTS, verbose=True)
+        )
+    system_prompt = SYSTEM_PROMPT_WEB if backend is not None else SYSTEM_PROMPT
     qa_cache = SemanticCache(embeddings, persist_directory=str(config.CHROMA_DIR))
     live_chunk_ids = set(store.get()["ids"])
     llm = make_chat_llm()
-    app = build_graph(llm.bind_tools([retrieve]), [retrieve], checkpointer=MemorySaver())
+    app = build_graph(
+        llm.bind_tools(tools), tools, checkpointer=MemorySaver(), system_prompt=system_prompt
+    )
     run_config = {
         "configurable": {"thread_id": "cli"},
         "recursion_limit": config.RECURSION_LIMIT,
     }
 
-    print(f"Agentic RAG — 角色: {cli_args.role} | 输入问题开始对话,exit 退出")
+    web_status = "开启 (Tavily)" if backend is not None else "关闭(未配置 TAVILY_API_KEY,纯本地模式)"
+    print(f"Agentic Search — 角色: {cli_args.role} | Web 搜索: {web_status} | exit 退出")
     while True:
         try:
             question = input("\n你: ").strip()
@@ -87,6 +100,8 @@ def main() -> None:
             continue
 
         retriever.take_recorded()  # 清空上一轮残留
+        if web_recorder is not None:
+            web_recorder.take_recorded()
         answer_parts: list[str] = []
         print("助手: ", end="", flush=True)
         for chunk, meta in app.stream(
@@ -107,9 +122,15 @@ def main() -> None:
         sources = sorted({d.metadata["source"] for d in recorded})
         if sources:
             print(f"—— 本轮引用: {', '.join(sources)}")
+        web_results = web_recorder.take_recorded() if web_recorder is not None else []
+        if web_results:
+            urls = sorted({r.url for r in web_results})
+            print(f"—— 本轮 Web 引用: {', '.join(urls)}")
 
         answer_text = "".join(answer_parts).strip()
-        if recorded and answer_text:
+        # 缓存写侧 gate:用过 web 的回答不缓存——时效性内容无法靠块哈希失效,
+        # 缓存后会把过期答案固化秒回(边界与"模型内容不无审核入库"一脉相承)
+        if recorded and answer_text and not web_results:
             qa_cache.store(
                 question=question,
                 answer=answer_text,

@@ -1,14 +1,14 @@
 """FAQ 沉淀:从语义缓存导出高频问答候选,供人工审核后入库。
 
 工作流(自动收集 → 人工把关 → 复用既有管道):
-1. `python -m agentic_rag.faq` 导出命中达标的候选到 faq_candidates.md
+1. `python -m agentic_search.faq` 导出命中达标的候选到 faq_candidates.md
 2. 人工核对答案与来源、修正表述
 3. 确认的问答放入 sample_docs/faq.md,重跑 ingest(切块/哈希/ACL 全部复用)
 
 未经审核的候选不得直接入库——模型生成内容不能无审核地成为检索来源。
 """
-from agentic_rag import config
-from agentic_rag.cache import SemanticCache
+from agentic_search import config
+from agentic_search.cache import SemanticCache
 
 REVIEW_HEADER = """# FAQ 候选(自动收集,须人工审核)
 
@@ -37,7 +37,7 @@ def export_candidates(cache: SemanticCache, min_hits: int = 2) -> str:
 
 
 def main() -> None:
-    from agentic_rag.llm import make_embeddings
+    from agentic_search.llm import make_embeddings
 
     embeddings = make_embeddings()
     cache = SemanticCache(embeddings, persist_directory=str(config.CHROMA_DIR))

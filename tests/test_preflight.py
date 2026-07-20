@@ -1,6 +1,6 @@
 import pytest
 
-from agentic_rag import config, preflight
+from agentic_search import config, preflight
 
 
 def test_ollama_down_exits_with_serve_hint(monkeypatch):

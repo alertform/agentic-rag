@@ -1,7 +1,7 @@
 """服务层请求模型:系统边界的输入校验(pydantic + 角色白名单)。"""
 from pydantic import BaseModel, field_validator
 
-from agentic_rag import config
+from agentic_search import config
 
 
 class ChatRequest(BaseModel):

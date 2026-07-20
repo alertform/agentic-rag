@@ -1,7 +1,7 @@
 """LLM 后端工厂:生成/嵌入客户端的唯一构造点。
 
 集中封装后端差异,使下游只依赖 LangChain 抽象类型(BaseChatModel / Embeddings),
-把 Ollama ↔ vLLM 切换收敛到本文件一处。经 config.BACKEND(AGENTIC_RAG_BACKEND 环境变量)选择。
+把 Ollama ↔ vLLM 切换收敛到本文件一处。经 config.BACKEND(AGENTIC_SEARCH_BACKEND 环境变量)选择。
 vLLM 迁移的完整步骤与坑见 README「推理后端」一节。
 """
 from __future__ import annotations
@@ -9,13 +9,13 @@ from __future__ import annotations
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseChatModel
 
-from agentic_rag import config
+from agentic_search import config
 
 
 def _unknown_backend() -> ValueError:
     return ValueError(
         f"未知 BACKEND={config.BACKEND!r};支持 'ollama' | 'vllm' "
-        "(经 AGENTIC_RAG_BACKEND 环境变量设置)"
+        "(经 AGENTIC_SEARCH_BACKEND 环境变量设置)"
     )
 
 
